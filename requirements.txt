@@ -1,0 +1,3 @@
+typesafe-sdk
+# MCPを使う場合:
+# mcp>=2,<3

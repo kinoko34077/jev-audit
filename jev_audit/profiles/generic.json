@@ -1,0 +1,47 @@
+{
+  "name": "generic",
+  "description": "成果物・文書・設定・小規模プロジェクト向けの汎用高速簡易監査。",
+  "status_criteria": {
+    "clear": "提示された規定・証拠の範囲で、重大な問題や不足が見当たらない",
+    "review": "致命的ではないが、人間または追加確認が望ましい",
+    "rework": "完了扱いする前に修正すべき問題がある",
+    "insufficient_evidence": "問題の有無を判断するための情報または証拠が足りない"
+  },
+  "issue_areas": {
+    "none": "明確な主要問題なし",
+    "requirements": "目的・要求・依頼内容との不整合",
+    "implementation": "実装・成果物そのものの不整合や欠陥",
+    "validation": "確認・検証・証拠の不足",
+    "consistency": "内部整合性・相互参照・関連要素の食い違い",
+    "security": "秘密情報、危険な設定、過剰な権限などの安全上の問題",
+    "documentation": "説明・仕様・成果物間の不整合",
+    "unknown": "情報不足で主要領域を特定できない"
+  },
+  "rules": [
+    {
+      "id": "GEN-GOAL",
+      "title": "目的整合",
+      "description": "成果物が明示された目的・要求・依頼内容と整合していること。"
+    },
+    {
+      "id": "GEN-COMPLETE",
+      "title": "完了性",
+      "description": "必要な要素が抜けておらず、未完了事項を完了扱いしていないこと。"
+    },
+    {
+      "id": "GEN-CONSISTENCY",
+      "title": "内部整合",
+      "description": "対象内の記述・設定・参照・挙動に明白な矛盾がないこと。"
+    },
+    {
+      "id": "GEN-EVIDENCE",
+      "title": "証拠十分性",
+      "description": "妥当性や完了を主張するために必要な確認結果・証拠が存在すること。"
+    },
+    {
+      "id": "GEN-RISK",
+      "title": "既知リスク",
+      "description": "明示されていない危険な前提、重大な副作用、見落としが残っていないこと。"
+    }
+  ]
+}

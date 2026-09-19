@@ -39,3 +39,8 @@ Jevの`local_status`はrisk値と分離し、具体リスクが低くても非`c
 - 自動修正
 
 目的は、詳細調査すべき場所を高速に絞ることだけである。
+
+
+## MCP directory resolution
+
+MCP adapter resolves the target directory in this order: explicit tool `path`, Claude Code `CLAUDE_PROJECT_DIR`, then server process cwd. The Audit Core itself remains client-agnostic.

@@ -138,7 +138,13 @@ jev-audit-mcp
 - `audit_directory`
 - `list_profiles`
 
-CLIとMCPは同じAudit Coreを使用します。
+`audit_directory` の対象directory解決順:
+
+1. MCP clientが `path` に渡したdirectory（Codex/Claude等）
+2. Claude Codeの `CLAUDE_PROJECT_DIR`
+3. MCP server processのcurrent working directory
+
+Codexではactive workspace/repositoryの絶対pathをtool引数 `path` として渡すのが確実です。Claude Codeでは`path`を明示してもよく、省略時は`CLAUDE_PROJECT_DIR`を使用します。CLIとMCPは同じAudit Coreを使用します。
 
 ## レポートの読み方
 

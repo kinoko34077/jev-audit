@@ -7,17 +7,6 @@
     "rework": "このファイル群の内容から、修正が必要な具体的問題が強く示される",
     "unknown": "このファイル群だけでは局所的な問題の有無を判断できない"
   },
-  "issue_areas": {
-    "none": "明確な主要問題なし",
-    "requirements": "目的・要求・受入条件",
-    "implementation": "実装ロジック・責務・データ処理",
-    "tests": "テスト不足・失敗・境界値・異常系",
-    "regression": "既存機能・互換性・回帰",
-    "docs_spec": "仕様・README・履歴・実装の食い違い",
-    "security": "secret、権限、危険な外部送信・設定",
-    "configuration": "設定値・環境変数・デプロイ条件",
-    "unknown": "証拠不足または分類不能"
-  },
   "rules": [
     {
       "id": "DEV-REQ",

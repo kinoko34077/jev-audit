@@ -11,7 +11,6 @@ RISK_SIGNALS = (
     "concrete_issue",
     "spec_mismatch",
     "regression_risk",
-    "hidden_assumption",
 )
 
 
@@ -28,33 +27,26 @@ def _stats(values: list[float]) -> dict[str, float]:
 
 def _batch_risk(batch: BatchAudit) -> float:
     values = [float(batch.result.nouls.get(name, 0.0)) for name in RISK_SIGNALS]
-    rework_probability = float(
-        batch.result.choices.get("local_status", {})
-        .get("probabilities", {})
-        .get("rework", 0.0)
-    )
-    values.append(rework_probability)
     return max(values, default=0.0)
 
 
-def _overall_status(ranked: list[dict[str, Any]], context_mean: float) -> str:
+def _overall_status(ranked: list[dict[str, Any]]) -> str:
     if not ranked:
         return "unknown"
 
-    top = ranked[0]
-    concrete = float(top.get("concrete_issue", 0.0))
-    rework_probability = float(top.get("rework_probability", 0.0))
-    risk = float(top.get("risk", 0.0))
-
-    # REDは単発の曖昧な高確率だけでは出さず、具体的問題とrework判断の一致を要求する。
-    if (concrete >= 0.80 and rework_probability >= 0.60) or rework_probability >= 0.90:
+    # REDは具体的問題とJevのrework判断が一致した場合だけ。
+    if any(
+        float(item.get("concrete_issue", 0.0)) >= 0.80
+        and float(item.get("rework_probability", 0.0)) >= 0.60
+        for item in ranked
+    ):
         return "rework"
 
-    if risk >= 0.55:
+    if float(ranked[0].get("risk", 0.0)) >= 0.55:
         return "review"
 
-    # 情報不足はriskとは分離するが、ほぼ全体が判断不能ならGREENとはしない。
-    if context_mean >= 0.80:
+    # review/unknown/reworkへ確率が分散しても、非clear全体が強ければGREENにしない。
+    if any(float(item.get("non_clear_probability", 0.0)) >= 0.60 for item in ranked):
         return "review"
 
     return "clear"
@@ -62,10 +54,6 @@ def _overall_status(ranked: list[dict[str, Any]], context_mean: float) -> str:
 
 def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
     signal_values: dict[str, list[float]] = defaultdict(list)
-    context_values: list[float] = []
-    severity_scores: list[float] = []
-    rule_values: dict[str, list[float]] = defaultdict(list)
-    issue_values: dict[str, list[float]] = defaultdict(list)
     total_input = 0
     total_output = 0
     total_latency = 0.0
@@ -85,67 +73,37 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
         for name in RISK_SIGNALS:
             signal_values[name].append(float(result.nouls.get(name, 0.0)))
 
-        context_values.append(float(result.nouls.get("context_insufficient", 0.0)))
-
-        severity = result.scores.get("severity", {}).get("score")
-        if isinstance(severity, (int, float)):
-            severity_scores.append(float(severity))
-
-        rule_probs = result.choices.get("dominant_rule", {}).get("probabilities", {})
-        for label, probability in rule_probs.items():
-            if label not in {"none", "unknown"}:
-                rule_values[str(label)].append(float(probability))
-
-        issue_probs = result.choices.get("dominant_issue_area", {}).get("probabilities", {})
-        for label, probability in issue_probs.items():
-            if label not in {"none", "unknown"}:
-                issue_values[str(label)].append(float(probability))
-
         risk = _batch_risk(batch)
-        rework_probability = float(
-            result.choices.get("local_status", {})
-            .get("probabilities", {})
-            .get("rework", 0.0)
-        )
+        local_status_probs = result.choices.get("local_status", {}).get("probabilities", {})
+        rework_probability = float(local_status_probs.get("rework", 0.0))
+        clear_probability = float(local_status_probs.get("clear", 0.0))
+        # Choiceの個別ラベルが将来欠けてもGREENへ誤倒ししないよう、clearの補数で扱う。
+        non_clear_probability = max(0.0, min(1.0, 1.0 - clear_probability))
+
         ranked_batches.append(
             {
                 "index": batch.index,
                 "risk": risk,
                 "concrete_issue": float(result.nouls.get("concrete_issue", 0.0)),
                 "rework_probability": rework_probability,
-                "context_insufficient": float(result.nouls.get("context_insufficient", 0.0)),
+                "non_clear_probability": non_clear_probability,
                 "paths": list(batch.paths),
-                "local_status": result.choices.get("local_status", {}).get("choice"),
             }
         )
 
     ranked_batches.sort(key=lambda item: float(item["risk"]), reverse=True)
-    context_stats = _stats(context_values)
-    status = _overall_status(ranked_batches, context_stats["mean"])
-
-    top_risks = [float(item["risk"]) for item in ranked_batches[:3]]
-    overall_risk = _mean(top_risks)
+    status = _overall_status(ranked_batches)
+    overall_risk = float(ranked_batches[0]["risk"]) if ranked_batches else 0.0
 
     return {
         "batch_count": len(batch_audits),
         "overall": {
             "status": status,
             "risk": overall_risk,
-            "peak_risk": float(ranked_batches[0]["risk"]) if ranked_batches else 0.0,
         },
         "signals": {
             name: _stats(values)
             for name, values in sorted(signal_values.items())
-        },
-        "context_insufficient": context_stats,
-        "severity": _stats(severity_scores),
-        "rule_signals": {
-            name: _stats(values)
-            for name, values in sorted(rule_values.items())
-        },
-        "issue_area_signals": {
-            name: _stats(values)
-            for name, values in sorted(issue_values.items())
         },
         "usage": {
             "input_tokens": total_input,

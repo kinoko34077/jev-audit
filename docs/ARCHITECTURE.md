@@ -10,7 +10,7 @@ MCP ─┘
 
 ## 境界
 
-- `scanner.py`: ファイル列挙・安全な除外・Git情報取得
+- `scanner.py`: ファイル列挙・安全な除外・必要最小限のGit-aware列挙
 - `batching.py`: Jevへ送る単位へ分割
 - `jev_gateway.py`: Jev質問とTypeSafe SDK境界
 - `aggregate.py`: バッチ結果の軽量な決定的集約
@@ -24,7 +24,7 @@ MCP ─┘
 バッチ単体では、プロジェクト全体の完成証明を要求しない。
 そのファイル群から直接確認できる問題だけを評価する。
 
-`context_insufficient` は独立指標とし、欠陥リスクへ混ぜない。
+Jevの`local_status`はrisk値と分離し、具体リスクが低くても非`clear`確率が高ければYELLOWへ倒す。
 最終段でJevへ再問い合わせはせず、バッチ結果をコードで集約する。
 
 ## セキュリティ

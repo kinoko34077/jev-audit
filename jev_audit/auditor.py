@@ -12,14 +12,10 @@ from .profiles import load_profile
 from .scanner import ScanOptions, scan_directory
 
 
-def _batch_state(batch: Batch, profile: AuditProfile, root: str, changed_only: bool) -> dict[str, Any]:
-    # 規定全文やGit status等を毎バッチへ重複送信しない。
-    # 監査規定はquestions側へ埋め込み、stateは監査対象だけに寄せる。
+def _batch_state(batch: Batch) -> dict[str, Any]:
+    # 監査規定はquestions側へ持たせ、stateは監査対象そのものだけにする。
+    # 各バッチでprofile名・説明・scan modeを重複送信しない。
     return {
-        "audit_profile": profile.name,
-        "profile_description": profile.description,
-        "root": root,
-        "scan_mode": "changed_only" if changed_only else "directory",
         "files": [
             {
                 "path": item.path,
@@ -34,10 +30,8 @@ def _batch_state(batch: Batch, profile: AuditProfile, root: str, changed_only: b
 def _audit_one(
     batch: Batch,
     profile: AuditProfile,
-    root: str,
-    changed_only: bool,
 ) -> BatchAudit:
-    result = audit_with_jev(_batch_state(batch, profile, root, changed_only), profile)
+    result = audit_with_jev(_batch_state(batch), profile)
     return BatchAudit(
         index=batch.index,
         paths=tuple(batch.paths),
@@ -56,6 +50,13 @@ def audit_directory(
     batch_chars: int = 32_000,
     workers: int = 4,
 ) -> AuditReport:
+    if max_file_chars <= 0:
+        raise ValueError("max_file_chars must be > 0")
+    if max_file_bytes <= 0:
+        raise ValueError("max_file_bytes must be > 0")
+    if batch_chars <= 0:
+        raise ValueError("batch_chars must be > 0")
+
     target = Path(path).resolve()
     profile_obj = load_profile(profile)
     scan = scan_directory(
@@ -76,7 +77,7 @@ def audit_directory(
     audits: list[BatchAudit] = []
     if workers == 1:
         audits = [
-            _audit_one(batch, profile_obj, scan.root, changed_only)
+            _audit_one(batch, profile_obj)
             for batch in batches
         ]
     else:
@@ -86,8 +87,6 @@ def audit_directory(
                     _audit_one,
                     batch,
                     profile_obj,
-                    scan.root,
-                    changed_only,
                 ): batch.index
                 for batch in batches
             }

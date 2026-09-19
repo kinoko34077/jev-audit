@@ -8,7 +8,7 @@ from .profiles import available_profiles
 
 def _server():
     try:
-        from mcp.server import MCPServer
+        from mcp.server.mcpserver import MCPServer
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "MCP support is not installed. Run: python -m pip install -e '.[mcp]'"

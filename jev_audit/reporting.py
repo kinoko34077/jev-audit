@@ -27,7 +27,7 @@ def format_report(report: AuditReport) -> str:
     lines: list[str] = []
     lines.append("=== Jev Audit ===")
     lines.append(f"status : {STATUS_LABELS.get(report.status, report.status)}")
-    lines.append(f"risk   : {_pct(float(overall.get('risk', 0.0)))} (top-3 concrete-risk mean)")
+    lines.append(f"risk   : {_pct(float(overall.get('risk', 0.0)))} (highest concrete-risk batch)")
     lines.append(f"root   : {report.root}")
     lines.append(f"profile: {report.profile}")
     lines.append(f"files  : {report.files_scanned}")
@@ -46,42 +46,13 @@ def format_report(report: AuditReport) -> str:
 
     lines.append("")
     lines.append("[concrete risk signals]")
-    for name in ("concrete_issue", "spec_mismatch", "regression_risk", "hidden_assumption"):
+    for name in ("concrete_issue", "spec_mismatch", "regression_risk"):
         stats = aggregate.get("signals", {}).get(name, {})
         lines.append(
             f"  {name:24s} max={_pct(float(stats.get('max', 0.0)))} "
             f"mean={_pct(float(stats.get('mean', 0.0)))}"
         )
 
-    severity = aggregate.get("severity", {})
-    lines.append(
-        f"  {'severity':24s} max={float(severity.get('max', 0.0)):.2f}/4 "
-        f"mean={float(severity.get('mean', 0.0)):.2f}/4"
-    )
-
-    context = aggregate.get("context_insufficient", {})
-    lines.append("")
-    lines.append("[context / evidence availability]")
-    lines.append(
-        f"  context_insufficient     max={_pct(float(context.get('max', 0.0)))} "
-        f"mean={_pct(float(context.get('mean', 0.0)))}"
-    )
-    lines.append("  note: context insufficiency is NOT counted as defect risk")
-
-    rule_signals = aggregate.get("rule_signals", {})
-    ranked_rules = sorted(
-        rule_signals.items(),
-        key=lambda item: float(item[1].get("max", 0.0)),
-        reverse=True,
-    )[:5]
-    if ranked_rules:
-        lines.append("")
-        lines.append("[rule suspicion signals]")
-        for rule_id, stats in ranked_rules:
-            lines.append(
-                f"  {rule_id:24s} max={_pct(float(stats.get('max', 0.0)))} "
-                f"mean={_pct(float(stats.get('mean', 0.0)))}"
-            )
 
     high = aggregate.get("highest_risk_batches", [])[:5]
     if high:
@@ -94,7 +65,7 @@ def format_report(report: AuditReport) -> str:
             lines.append(
                 f"  #{item['index']} risk={_pct(float(item['risk']))} "
                 f"concrete={_pct(float(item['concrete_issue']))} "
-                f"context={_pct(float(item['context_insufficient']))} :: {shown}"
+                f"non_clear={_pct(float(item['non_clear_probability']))} :: {shown}"
             )
 
     if report.skipped_counts:
@@ -107,7 +78,7 @@ def format_report(report: AuditReport) -> str:
         lines.append("  sensitive file contents were NOT sent to Jev")
 
     lines.append("")
-    lines.append("Fast probabilistic screening only; context shortage is separated from defect risk.")
+    lines.append("Fast probabilistic screening only; use detailed review/tests for final verification.")
     return "\n".join(lines)
 
 

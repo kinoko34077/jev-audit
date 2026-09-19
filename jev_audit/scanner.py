@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import shutil
 import subprocess
 from typing import Iterable
 
@@ -45,6 +46,7 @@ KNOWN_LOCK_FILES = {
 
 SENSITIVE_BASENAMES = {
     ".env",
+    ".envrc",
     ".npmrc",
     ".pypirc",
     ".netrc",
@@ -56,6 +58,7 @@ SENSITIVE_BASENAMES = {
 
 SENSITIVE_SUFFIXES = {
     ".key",
+    ".pem",
     ".p12",
     ".pfx",
     ".jks",
@@ -70,9 +73,13 @@ class ScanOptions:
     max_file_bytes: int = 2_000_000
 
 
+def _git_available() -> bool:
+    return shutil.which("git") is not None
+
+
 def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", "-C", str(root), *args],
+        ["git", "-c", "core.quotepath=false", "-C", str(root), *args],
         check=False,
         capture_output=True,
         text=True,
@@ -82,6 +89,8 @@ def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _is_git_root(root: Path) -> bool:
+    if not _git_available():
+        return False
     result = _run_git(root, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         return False
@@ -99,8 +108,13 @@ def _git_candidates(root: Path, changed_only: bool) -> list[Path] | None:
 
     if changed_only:
         changed = _run_git(root, "diff", "--name-only", "HEAD", "--")
-        untracked = _run_git(root, "ls-files", "--others", "--exclude-standard")
-        names = set(changed.stdout.splitlines()) | set(untracked.stdout.splitlines())
+        if changed.returncode == 0:
+            untracked = _run_git(root, "ls-files", "--others", "--exclude-standard")
+            names = set(changed.stdout.splitlines()) | set(untracked.stdout.splitlines())
+        else:
+            # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
+            listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
+            names = set(listed.stdout.splitlines())
     else:
         listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
         names = set(listed.stdout.splitlines())
@@ -169,30 +183,14 @@ def _truncate_text(text: str, max_chars: int) -> tuple[str, bool]:
     return text[:head] + marker + text[-tail:], True
 
 
-def _git_metadata(root: Path) -> dict:
-    if not _is_git_root(root):
-        return {"is_git_repo": False}
-
-    status = _run_git(root, "status", "--porcelain=v1")
-    diff_stat = _run_git(root, "diff", "--stat", "HEAD", "--")
-    branch = _run_git(root, "branch", "--show-current")
-    head = _run_git(root, "rev-parse", "HEAD")
-    return {
-        "is_git_repo": True,
-        "branch": branch.stdout.strip() or None,
-        "head": head.stdout.strip() or None,
-        "status": status.stdout[:20_000],
-        "diff_stat": diff_stat.stdout[:20_000],
-    }
-
-
 def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
     root = root.resolve()
     if not root.exists() or not root.is_dir():
         raise FileNotFoundError(f"Directory not found: {root}")
 
     git_paths = _git_candidates(root, options.changed_only)
-    candidates = git_paths if git_paths is not None else sorted(_walk_candidates(root))
+    is_git_repo = git_paths is not None
+    candidates = git_paths if is_git_repo else sorted(_walk_candidates(root))
 
     skipped = Counter()
     sensitive_paths: list[str] = []
@@ -239,5 +237,5 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         files=tuple(snapshots),
         skipped_counts=dict(sorted(skipped.items())),
         skipped_sensitive_paths=tuple(sorted(sensitive_paths)),
-        git=_git_metadata(root),
+        git={"is_git_repo": is_git_repo},
     )

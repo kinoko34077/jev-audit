@@ -36,10 +36,16 @@ def load_profile(name_or_path: str) -> AuditProfile:
         for item in data["rules"]
     )
 
+    status_criteria = {str(k): str(v) for k, v in data["status_criteria"].items()}
+    required_statuses = {"clear", "review", "rework", "unknown"}
+    if set(status_criteria) != required_statuses:
+        raise ValueError(
+            "status_criteria must contain exactly: clear, review, rework, unknown"
+        )
+
     return AuditProfile(
         name=str(data["name"]),
         description=str(data.get("description", "")),
         rules=rules,
-        issue_areas={str(k): str(v) for k, v in data["issue_areas"].items()},
-        status_criteria={str(k): str(v) for k, v in data["status_criteria"].items()},
+        status_criteria=status_criteria,
     )

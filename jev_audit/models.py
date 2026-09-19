@@ -16,7 +16,6 @@ class AuditProfile:
     name: str
     description: str
     rules: tuple[AuditRule, ...]
-    issue_areas: dict[str, str]
     status_criteria: dict[str, str]
 
 
@@ -59,7 +58,6 @@ class JevResult:
     usage: dict[str, int | None]
     choices: dict[str, dict[str, Any]]
     nouls: dict[str, float]
-    scores: dict[str, dict[str, Any]]
 
 
 @dataclass(frozen=True)

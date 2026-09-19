@@ -7,11 +7,7 @@ TypeSafe AI **Jev** を使って、現在のディレクトリや任意のリポ
 - 実装・設定・文書内の具体的な問題候補
 - 仕様・実装の食い違い候補
 - 回帰リスクの兆候
-- 危険な暗黙前提
-- 関連しそうな監査規定
 - 怪しいファイル群
-
-`context不足` は問題そのものと分離して表示し、リスク値には加算しません。
 
 ## セットアップ
 
@@ -19,6 +15,7 @@ TypeSafe AI **Jev** を使って、現在のディレクトリや任意のリポ
 
 - Python 3.10+
 - 環境変数 `TYPESAFE_API_KEY` を設定済み
+- Gitは任意（`--changed-only`使用時のみ必要）
 
 PowerShell:
 
@@ -116,13 +113,13 @@ jev-audit . --profile C:\rules\my-audit.json
 
 以下の本文は既定でJevへ送りません。
 
-- `.env`, `.env.*`
+- `.env`, `.env.*`, `.envrc`
 - `.npmrc`, `.pypirc`, `.netrc`
 - `credentials.json`, `secrets.json`
 - `id_rsa`, `id_ed25519`
-- `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
+- `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
 
-Gitリポジトリでは `.gitignore` も尊重します。
+Gitが利用可能なGitリポジトリでは `.gitignore` も尊重します。Git未導入環境では通常のディレクトリ走査へ自動フォールバックします。
 
 ## MCP
 
@@ -145,9 +142,8 @@ CLIとMCPは同じAudit Coreを使用します。
 
 ## レポートの読み方
 
-- `risk`: 上位3バッチの具体的リスク値の平均
+- `risk`: `concrete_issue / spec_mismatch / regression_risk`のうち、全バッチで最も高い具体的リスク値
 - `concrete_issue`: ファイル内容から直接読める欠陥・矛盾候補
-- `context_insufficient`: 判断材料不足。**riskには含めない**
-- `rule suspicion signals`: どの監査規定が相対的に関係しそうか。絶対的な違反確率ではない
+- `local_status`: `clear / review / rework / unknown` の確率分布。非`clear`側が強い場合はYELLOW判定に反映するが、risk値には混ぜない
 
 これは高速簡易監査です。テスト・実操作・詳細レビューの代替ではありません。

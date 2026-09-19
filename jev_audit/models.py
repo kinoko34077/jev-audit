@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from dataclasses import asdict, dataclass
 from typing import Any
 
 
@@ -82,12 +81,16 @@ class AuditReport:
     git: dict[str, Any]
     batch_audits: tuple[BatchAudit, ...]
     aggregate: dict[str, Any]
-    final: JevResult
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @property
     def status(self) -> str:
-        choice = self.final.choices.get("overall_status", {}).get("choice")
-        return str(choice or "unknown")
+        return str(self.aggregate.get("overall", {}).get("status") or "unknown")
+
+    @property
+    def model(self) -> str:
+        if not self.batch_audits:
+            return "unknown"
+        return self.batch_audits[0].result.model

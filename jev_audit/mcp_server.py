@@ -23,7 +23,7 @@ def _server():
         changed_only: bool = False,
         max_file_chars: int = 12_000,
         max_file_bytes: int = 2_000_000,
-        batch_chars: int = 16_000,
+        batch_chars: int = 32_000,
         workers: int = 4,
     ) -> dict[str, Any]:
         """Audit a local directory with Jev and return a structured probabilistic report."""

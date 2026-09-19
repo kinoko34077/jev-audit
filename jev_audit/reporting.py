@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from .models import AuditReport
 
 
 STATUS_LABELS = {
-    "clear": "GREEN / clear",
+    "clear": "GREEN / no concrete issue",
     "review": "YELLOW / review",
     "rework": "RED / rework",
-    "insufficient_evidence": "YELLOW / insufficient evidence",
+    "unknown": "YELLOW / unknown",
 }
 
 
@@ -22,73 +21,69 @@ def _pct(value: float | None) -> str:
 
 
 def format_report(report: AuditReport) -> str:
+    aggregate = report.aggregate
+    overall = aggregate.get("overall", {})
+
     lines: list[str] = []
     lines.append("=== Jev Audit ===")
     lines.append(f"status : {STATUS_LABELS.get(report.status, report.status)}")
+    lines.append(f"risk   : {_pct(float(overall.get('risk', 0.0)))} (top-3 concrete-risk mean)")
     lines.append(f"root   : {report.root}")
     lines.append(f"profile: {report.profile}")
     lines.append(f"files  : {report.files_scanned}")
     lines.append(f"batches: {report.batches}")
-    lines.append(f"model  : {report.final.model}")
+    lines.append(f"model  : {report.model}")
 
-    usage = report.aggregate.get("usage", {})
-    final_in = report.final.usage.get("input_tokens") or 0
-    final_out = report.final.usage.get("output_tokens") or 0
-    total_in = int(usage.get("input_tokens", 0)) + int(final_in)
-    total_out = int(usage.get("output_tokens", 0)) + int(final_out)
-    total_latency = float(report.aggregate.get("total_batch_latency_ms", 0.0)) + report.final.elapsed_ms
-    lines.append(f"tokens : input={total_in} output={total_out}")
-    lines.append(f"api ms : {total_latency:.1f} (sum of requests, parallel batches included)")
-
-    lines.append("")
-    lines.append("[overall status probabilities]")
-    status = report.final.choices.get("overall_status", {})
-    for label, probability in sorted(
-        status.get("probabilities", {}).items(), key=lambda x: x[1], reverse=True
-    ):
-        lines.append(f"  {label:24s} {_pct(float(probability))}")
-
-    dominant = report.final.choices.get("dominant_issue_area", {})
-    if dominant:
-        lines.append("")
-        lines.append(
-            f"dominant issue area: {dominant.get('choice')} "
-            f"(confidence={_pct(float(dominant.get('confidence', 0.0)))})"
-        )
+    usage = aggregate.get("usage", {})
+    lines.append(
+        f"tokens : input={int(usage.get('input_tokens', 0))} "
+        f"output={int(usage.get('output_tokens', 0))}"
+    )
+    lines.append(
+        f"api ms : {float(aggregate.get('total_batch_latency_ms', 0.0)):.1f} "
+        "(sum of parallel batch requests)"
+    )
 
     lines.append("")
-    lines.append("[risk / incompleteness]")
-    fixed = [
-        "needs_rework",
-        "needs_more_validation",
-        "evidence_insufficient",
-        "regression_risk",
-        "spec_mismatch",
-        "hidden_assumption",
-    ]
-    for name in fixed:
-        lines.append(f"  {name:26s} {_pct(report.final.nouls.get(name))}")
-
-    severity = report.final.scores.get("severity", {})
-    if severity:
+    lines.append("[concrete risk signals]")
+    for name in ("concrete_issue", "spec_mismatch", "regression_risk", "hidden_assumption"):
+        stats = aggregate.get("signals", {}).get(name, {})
         lines.append(
-            f"  {'severity':26s} {float(severity.get('score', 0.0)):.2f}/4 "
-            f"(confidence={_pct(float(severity.get('confidence', 0.0)))})"
+            f"  {name:24s} max={_pct(float(stats.get('max', 0.0)))} "
+            f"mean={_pct(float(stats.get('mean', 0.0)))}"
         )
 
-    rules = [
-        (name.removeprefix("rule_violation__"), value)
-        for name, value in report.final.nouls.items()
-        if name.startswith("rule_violation__")
-    ]
-    rules.sort(key=lambda x: x[1], reverse=True)
-    if rules:
-        lines.append("")
-        lines.append("[rule violation probabilities]")
-        for rule_id, probability in rules:
-            lines.append(f"  {rule_id:28s} {_pct(probability)}")
+    severity = aggregate.get("severity", {})
+    lines.append(
+        f"  {'severity':24s} max={float(severity.get('max', 0.0)):.2f}/4 "
+        f"mean={float(severity.get('mean', 0.0)):.2f}/4"
+    )
 
-    high = report.aggregate.get("highest_risk_batches", [])[:5]
+    context = aggregate.get("context_insufficient", {})
+    lines.append("")
+    lines.append("[context / evidence availability]")
+    lines.append(
+        f"  context_insufficient     max={_pct(float(context.get('max', 0.0)))} "
+        f"mean={_pct(float(context.get('mean', 0.0)))}"
+    )
+    lines.append("  note: context insufficiency is NOT counted as defect risk")
+
+    rule_signals = aggregate.get("rule_signals", {})
+    ranked_rules = sorted(
+        rule_signals.items(),
+        key=lambda item: float(item[1].get("max", 0.0)),
+        reverse=True,
+    )[:5]
+    if ranked_rules:
+        lines.append("")
+        lines.append("[rule suspicion signals]")
+        for rule_id, stats in ranked_rules:
+            lines.append(
+                f"  {rule_id:24s} max={_pct(float(stats.get('max', 0.0)))} "
+                f"mean={_pct(float(stats.get('mean', 0.0)))}"
+            )
+
+    high = aggregate.get("highest_risk_batches", [])[:5]
     if high:
         lines.append("")
         lines.append("[highest-risk batches]")
@@ -97,8 +92,9 @@ def format_report(report: AuditReport) -> str:
             if len(item["paths"]) > 5:
                 shown += f", ... (+{len(item['paths']) - 5})"
             lines.append(
-                f"  #{item['index']} risk={_pct(float(item['max_risk']))} "
-                f"status={item['status']} :: {shown}"
+                f"  #{item['index']} risk={_pct(float(item['risk']))} "
+                f"concrete={_pct(float(item['concrete_issue']))} "
+                f"context={_pct(float(item['context_insufficient']))} :: {shown}"
             )
 
     if report.skipped_counts:
@@ -111,7 +107,7 @@ def format_report(report: AuditReport) -> str:
         lines.append("  sensitive file contents were NOT sent to Jev")
 
     lines.append("")
-    lines.append("This is a fast probabilistic audit, not proof of correctness.")
+    lines.append("Fast probabilistic screening only; context shortage is separated from defect risk.")
     return "\n".join(lines)
 
 

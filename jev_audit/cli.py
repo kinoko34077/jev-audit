@@ -21,7 +21,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-only", action="store_true", help="audit only Git changed/untracked files")
     parser.add_argument("--max-file-chars", type=int, default=12_000)
     parser.add_argument("--max-file-bytes", type=int, default=2_000_000)
-    parser.add_argument("--batch-chars", type=int, default=16_000)
+    parser.add_argument("--batch-chars", type=int, default=32_000)
     parser.add_argument("--workers", type=int, default=4, help="parallel Jev batch requests")
     parser.add_argument("--json", action="store_true", help="print JSON only")
     parser.add_argument("--save", type=Path, help="save full report JSON")
@@ -39,7 +39,7 @@ def _exit_code(status: str, fail_on: str) -> int:
     if fail_on == "never":
         return 0
     if fail_on == "review":
-        return 1 if status in {"review", "rework", "insufficient_evidence"} else 0
+        return 1 if status in {"review", "rework", "unknown"} else 0
     if fail_on == "rework":
         return 1 if status == "rework" else 0
     return 0

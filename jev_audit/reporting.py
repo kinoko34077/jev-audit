@@ -10,7 +10,7 @@ STATUS_LABELS = {
     "clear": "GREEN / no concrete issue",
     "review": "YELLOW / review",
     "rework": "RED / rework",
-    "unknown": "YELLOW / unknown",
+    "unknown": "UNKNOWN / insufficient local context",
 }
 
 
@@ -27,6 +27,28 @@ def format_report(report: AuditReport) -> str:
     lines: list[str] = []
     lines.append("=== Jev Audit ===")
     lines.append(f"status : {STATUS_LABELS.get(report.status, report.status)}")
+    trigger = overall.get("status_trigger")
+    if isinstance(trigger, dict):
+        kind = trigger.get("kind")
+        batch_index = int(trigger.get("batch_index", 0))
+        if kind == "concrete_and_rework":
+            lines.append(
+                f"reason : concrete={_pct(float(trigger.get('concrete_issue', 0.0)))} "
+                f"and rework={_pct(float(trigger.get('rework_probability', 0.0)))} at batch #{batch_index}"
+            )
+        elif kind == "concrete_risk":
+            lines.append(
+                f"reason : risk={_pct(float(trigger.get('value', 0.0)))} "
+                f"via={trigger.get('risk_driver', 'unknown')} at batch #{batch_index}"
+            )
+        elif kind == "actionable_probability":
+            lines.append(
+                f"reason : actionable={_pct(float(trigger.get('value', 0.0)))} at batch #{batch_index}"
+            )
+        elif kind == "unknown_probability":
+            lines.append(
+                f"reason : unknown={_pct(float(trigger.get('value', 0.0)))} at batch #{batch_index}"
+            )
     lines.append(f"risk   : {_pct(float(overall.get('risk', 0.0)))} (highest concrete-risk batch)")
     lines.append(f"root   : {report.root}")
     lines.append(f"profile: {report.profile}")
@@ -40,7 +62,10 @@ def format_report(report: AuditReport) -> str:
         f"output={int(usage.get('output_tokens', 0))}"
     )
     lines.append(
-        f"api ms : {float(aggregate.get('total_batch_latency_ms', 0.0)):.1f} "
+        f"elapsed: {float(aggregate.get('wall_clock_ms', 0.0)):.1f} ms (wall-clock)"
+    )
+    lines.append(
+        f"api work: {float(aggregate.get('total_batch_latency_ms', 0.0)):.1f} ms "
         "(sum of parallel batch requests)"
     )
 
@@ -53,7 +78,6 @@ def format_report(report: AuditReport) -> str:
             f"mean={_pct(float(stats.get('mean', 0.0)))}"
         )
 
-
     high = aggregate.get("highest_risk_batches", [])[:5]
     if high:
         lines.append("")
@@ -64,8 +88,11 @@ def format_report(report: AuditReport) -> str:
                 shown += f", ... (+{len(item['paths']) - 5})"
             lines.append(
                 f"  #{item['index']} risk={_pct(float(item['risk']))} "
+                f"via={item.get('risk_driver', 'unknown')} "
                 f"concrete={_pct(float(item['concrete_issue']))} "
-                f"non_clear={_pct(float(item['non_clear_probability']))} :: {shown}"
+                f"rework={_pct(float(item['rework_probability']))} "
+                f"actionable={_pct(float(item['actionable_probability']))} "
+                f"unknown={_pct(float(item['unknown_probability']))} :: {shown}"
             )
 
     if report.skipped_counts:
@@ -76,6 +103,9 @@ def format_report(report: AuditReport) -> str:
 
     if report.skipped_sensitive_paths:
         lines.append("  sensitive file contents were NOT sent to Jev")
+    deleted_paths = report.git.get("deleted_paths", ())
+    if deleted_paths:
+        lines.append("  deleted file contents were not available to audit")
 
     lines.append("")
     lines.append("Fast probabilistic screening only; use detailed review/tests for final verification.")

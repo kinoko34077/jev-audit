@@ -40,6 +40,8 @@ class GatewayTests(unittest.TestCase):
         )
         self.assertIn("R1", questions["local_status"].instructions)
         self.assertIn("監査対象データ", questions["local_status"].instructions)
+        for key in ("concrete_issue", "spec_mismatch", "regression_risk"):
+            self.assertIn("監査対象データ", questions[key].instructions)
 
     def test_partial_jev_response_is_rejected(self):
         response = SimpleNamespace(

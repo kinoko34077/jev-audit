@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+import time
 from typing import Any
 
 from .aggregate import aggregate_batches
@@ -57,6 +58,8 @@ def audit_directory(
     if batch_chars <= 0:
         raise ValueError("batch_chars must be > 0")
 
+    started = time.perf_counter()
+
     target = Path(path).resolve()
     profile_obj = load_profile(profile)
     scan = scan_directory(
@@ -68,7 +71,7 @@ def audit_directory(
         ),
     )
 
-    if not scan.files:
+    if not scan.files and not scan.git.get("deleted_paths"):
         raise RuntimeError("No auditable text files found after exclusions")
 
     batches = make_batches(scan.files, batch_chars)
@@ -96,6 +99,7 @@ def audit_directory(
 
     batch_audits = tuple(audits)
     aggregate = aggregate_batches(batch_audits)
+    aggregate["wall_clock_ms"] = (time.perf_counter() - started) * 1000.0
 
     return AuditReport(
         root=scan.root,

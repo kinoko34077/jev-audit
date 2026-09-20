@@ -38,7 +38,7 @@ cd C:\path\to\repo
 jev-audit
 ```
 
-Gitの変更ファイルだけ:
+Gitの変更ファイルだけ（削除は件数のみ検出し、内容監査はしません）:
 
 ```powershell
 jev-audit . --changed-only
@@ -150,6 +150,9 @@ Codexではactive workspace/repositoryの絶対pathをtool引数 `path` とし�
 
 - `risk`: `concrete_issue / spec_mismatch / regression_risk`のうち、全バッチで最も高い具体的リスク値
 - `concrete_issue`: ファイル内容から直接読める欠陥・矛盾候補
-- `local_status`: `clear / review / rework / unknown` の確率分布。非`clear`側が強い場合はYELLOW判定に反映するが、risk値には混ぜない
+- `local_status`: `clear / review / rework / unknown` の確率分布。`review + rework`は要確認判定に使い、`unknown`は情報不足として分離する
+- `elapsed`: 実行開始から終了までのwall-clock時間
+- `reason`: 最終statusを発生させた条件とbatch
+- `api work`: 並列Jev requestの処理時間合計であり、実待ち時間ではない
 
 これは高速簡易監査です。テスト・実操作・詳細レビューの代替ではありません。

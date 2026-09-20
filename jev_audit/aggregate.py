@@ -25,31 +25,76 @@ def _stats(values: list[float]) -> dict[str, float]:
     }
 
 
-def _batch_risk(batch: BatchAudit) -> float:
-    values = [float(batch.result.nouls.get(name, 0.0)) for name in RISK_SIGNALS]
-    return max(values, default=0.0)
+def _risk_details(batch: BatchAudit) -> tuple[float, str]:
+    values = {
+        name: float(batch.result.nouls.get(name, 0.0))
+        for name in RISK_SIGNALS
+    }
+    if not values:
+        return 0.0, "none"
+    driver = max(values, key=values.get)
+    return values[driver], driver
 
 
-def _overall_status(ranked: list[dict[str, Any]]) -> str:
+def _overall_status(ranked: list[dict[str, Any]]) -> tuple[str, dict[str, Any] | None]:
     if not ranked:
-        return "unknown"
+        return "unknown", None
 
     # REDは具体的問題とJevのrework判断が一致した場合だけ。
-    if any(
-        float(item.get("concrete_issue", 0.0)) >= 0.80
-        and float(item.get("rework_probability", 0.0)) >= 0.60
+    red_candidates = [
+        item
         for item in ranked
-    ):
-        return "rework"
+        if float(item.get("concrete_issue", 0.0)) >= 0.80
+        and float(item.get("rework_probability", 0.0)) >= 0.60
+    ]
+    if red_candidates:
+        trigger = max(
+            red_candidates,
+            key=lambda item: (
+                float(item.get("concrete_issue", 0.0)),
+                float(item.get("rework_probability", 0.0)),
+            ),
+        )
+        return "rework", {
+            "kind": "concrete_and_rework",
+            "batch_index": int(trigger["index"]),
+            "concrete_issue": float(trigger["concrete_issue"]),
+            "rework_probability": float(trigger["rework_probability"]),
+        }
 
-    if float(ranked[0].get("risk", 0.0)) >= 0.55:
-        return "review"
+    highest_risk = ranked[0]
+    if float(highest_risk.get("risk", 0.0)) >= 0.55:
+        return "review", {
+            "kind": "concrete_risk",
+            "batch_index": int(highest_risk["index"]),
+            "value": float(highest_risk["risk"]),
+            "risk_driver": str(highest_risk.get("risk_driver", "unknown")),
+        }
 
-    # review/unknown/reworkへ確率が分散しても、非clear全体が強ければGREENにしない。
-    if any(float(item.get("non_clear_probability", 0.0)) >= 0.60 for item in ranked):
-        return "review"
+    # review/reworkは行動対象。unknownは情報不足として別扱いにする。
+    actionable = max(
+        ranked,
+        key=lambda item: float(item.get("actionable_probability", 0.0)),
+    )
+    if float(actionable.get("actionable_probability", 0.0)) >= 0.60:
+        return "review", {
+            "kind": "actionable_probability",
+            "batch_index": int(actionable["index"]),
+            "value": float(actionable["actionable_probability"]),
+        }
 
-    return "clear"
+    unknown = max(
+        ranked,
+        key=lambda item: float(item.get("unknown_probability", 0.0)),
+    )
+    if float(unknown.get("unknown_probability", 0.0)) >= 0.80:
+        return "unknown", {
+            "kind": "unknown_probability",
+            "batch_index": int(unknown["index"]),
+            "value": float(unknown["unknown_probability"]),
+        }
+
+    return "clear", None
 
 
 def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
@@ -73,26 +118,32 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
         for name in RISK_SIGNALS:
             signal_values[name].append(float(result.nouls.get(name, 0.0)))
 
-        risk = _batch_risk(batch)
+        risk, risk_driver = _risk_details(batch)
         local_status_probs = result.choices.get("local_status", {}).get("probabilities", {})
+        review_probability = float(local_status_probs.get("review", 0.0))
         rework_probability = float(local_status_probs.get("rework", 0.0))
-        clear_probability = float(local_status_probs.get("clear", 0.0))
-        # Choiceの個別ラベルが将来欠けてもGREENへ誤倒ししないよう、clearの補数で扱う。
-        non_clear_probability = max(0.0, min(1.0, 1.0 - clear_probability))
+        unknown_probability = float(local_status_probs.get("unknown", 0.0))
+        actionable_probability = max(
+            0.0,
+            min(1.0, review_probability + rework_probability),
+        )
 
         ranked_batches.append(
             {
                 "index": batch.index,
                 "risk": risk,
+                "risk_driver": risk_driver,
                 "concrete_issue": float(result.nouls.get("concrete_issue", 0.0)),
+                "review_probability": review_probability,
                 "rework_probability": rework_probability,
-                "non_clear_probability": non_clear_probability,
+                "actionable_probability": actionable_probability,
+                "unknown_probability": unknown_probability,
                 "paths": list(batch.paths),
             }
         )
 
     ranked_batches.sort(key=lambda item: float(item["risk"]), reverse=True)
-    status = _overall_status(ranked_batches)
+    status, status_trigger = _overall_status(ranked_batches)
     overall_risk = float(ranked_batches[0]["risk"]) if ranked_batches else 0.0
 
     return {
@@ -100,6 +151,7 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
         "overall": {
             "status": status,
             "risk": overall_risk,
+            "status_trigger": status_trigger,
         },
         "signals": {
             name: _stats(values)

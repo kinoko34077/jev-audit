@@ -100,17 +100,23 @@ def _is_git_root(root: Path) -> bool:
         return False
 
 
-def _git_candidates(root: Path, changed_only: bool) -> list[Path] | None:
+def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[str, ...]] | None:
     if not _is_git_root(root):
         if changed_only:
             raise ValueError("--changed-only requires the target path itself to be a Git repository root")
         return None
 
+    deleted_names: set[str] = set()
     if changed_only:
         changed = _run_git(root, "diff", "--name-only", "HEAD", "--")
         if changed.returncode == 0:
             untracked = _run_git(root, "ls-files", "--others", "--exclude-standard")
-            names = set(changed.stdout.splitlines()) | set(untracked.stdout.splitlines())
+            changed_names = set(changed.stdout.splitlines())
+            names = changed_names | set(untracked.stdout.splitlines())
+            deleted_names = {
+                name for name in changed_names
+                if name.strip() and not (root / name).exists()
+            }
         else:
             # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
             listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
@@ -124,7 +130,7 @@ def _git_candidates(root: Path, changed_only: bool) -> list[Path] | None:
         path = root / name
         if path.is_file() and not path.is_symlink():
             result.append(path)
-    return result
+    return result, tuple(sorted(deleted_names))
 
 
 def _walk_candidates(root: Path) -> Iterable[Path]:
@@ -188,11 +194,17 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
     if not root.exists() or not root.is_dir():
         raise FileNotFoundError(f"Directory not found: {root}")
 
-    git_paths = _git_candidates(root, options.changed_only)
-    is_git_repo = git_paths is not None
-    candidates = git_paths if is_git_repo else sorted(_walk_candidates(root))
+    git_result = _git_candidates(root, options.changed_only)
+    is_git_repo = git_result is not None
+    if git_result is None:
+        candidates = sorted(_walk_candidates(root))
+        deleted_paths: tuple[str, ...] = ()
+    else:
+        candidates, deleted_paths = git_result
 
     skipped = Counter()
+    if deleted_paths:
+        skipped["deleted_change_without_content"] += len(deleted_paths)
     sensitive_paths: list[str] = []
     snapshots: list[FileSnapshot] = []
 
@@ -237,5 +249,5 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         files=tuple(snapshots),
         skipped_counts=dict(sorted(skipped.items())),
         skipped_sensitive_paths=tuple(sorted(sensitive_paths)),
-        git={"is_git_repo": is_git_repo},
+        git={"is_git_repo": is_git_repo, "deleted_paths": deleted_paths},
     )

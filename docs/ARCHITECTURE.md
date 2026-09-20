@@ -24,7 +24,7 @@ MCP ─┘
 バッチ単体では、プロジェクト全体の完成証明を要求しない。
 そのファイル群から直接確認できる問題だけを評価する。
 
-Jevの`local_status`はrisk値と分離し、具体リスクが低くても非`clear`確率が高ければYELLOWへ倒す。
+Jevの`local_status`はrisk値と分離する。`review + rework`は要確認判定へ使い、`unknown`は情報不足として別statusに分離する。
 最終段でJevへ再問い合わせはせず、バッチ結果をコードで集約する。
 
 ## セキュリティ
@@ -44,3 +44,5 @@ Jevの`local_status`はrisk値と分離し、具体リスクが低くても非`c
 ## MCP directory resolution
 
 MCP adapter resolves the target directory in this order: explicit tool `path`, Claude Code `CLAUDE_PROJECT_DIR`, then server process cwd. The Audit Core itself remains client-agnostic.
+
+changed-onlyでは削除ファイルの存在を検出・報告するが、削除前本文は復元せずJev監査対象には含めない。

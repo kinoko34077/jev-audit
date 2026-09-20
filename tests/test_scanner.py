@@ -69,6 +69,24 @@ class ScannerTests(unittest.TestCase):
             paths = {item.path for item in result.files}
             self.assertIn("staged.py", paths)
 
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_changed_only_reports_deleted_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.com"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
+            target = root / "deleted.py"
+            target.write_text("x=1", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "deleted.py"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "initial"], check=True)
+            target.unlink()
+
+            result = scan_directory(root, ScanOptions(changed_only=True))
+            self.assertEqual(result.files, ())
+            self.assertEqual(result.skipped_counts.get("deleted_change_without_content"), 1)
+            self.assertEqual(result.git.get("deleted_paths"), ("deleted.py",))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -82,7 +82,7 @@ class AggregateTests(unittest.TestCase):
         aggregate = aggregate_batches((batch,))
         self.assertEqual(aggregate["overall"]["status"], "review")
 
-    def test_unknown_probability_prevents_false_green(self):
+    def test_unknown_probability_is_separate_from_review(self):
         batch = BatchAudit(
             index=1,
             paths=("a.py",),
@@ -90,18 +90,31 @@ class AggregateTests(unittest.TestCase):
             result=result(concrete=0.1, rework=0.0, unknown=0.95, spec=0.1, regression=0.1),
         )
         aggregate = aggregate_batches((batch,))
-        self.assertEqual(aggregate["overall"]["status"], "review")
+        self.assertEqual(aggregate["overall"]["status"], "unknown")
+        item = aggregate["highest_risk_batches"][0]
+        self.assertEqual(item["actionable_probability"], 0.0)
+        self.assertEqual(item["unknown_probability"], 0.95)
 
-    def test_split_non_clear_probability_prevents_false_green(self):
+    def test_split_review_and_rework_probability_prevents_false_green(self):
         batch = BatchAudit(
             index=1,
             paths=("a.py",),
             chars=10,
-            result=result(concrete=0.1, rework=0.10, review=0.45, unknown=0.35, spec=0.1, regression=0.1),
+            result=result(concrete=0.1, rework=0.20, review=0.45, unknown=0.25, spec=0.1, regression=0.1),
         )
         aggregate = aggregate_batches((batch,))
         self.assertEqual(aggregate["overall"]["status"], "review")
-        self.assertGreaterEqual(aggregate["highest_risk_batches"][0]["non_clear_probability"], 0.60)
+        self.assertGreaterEqual(aggregate["highest_risk_batches"][0]["actionable_probability"], 0.60)
+
+    def test_unknown_below_threshold_does_not_force_review(self):
+        batch = BatchAudit(
+            index=1,
+            paths=("a.py",),
+            chars=10,
+            result=result(concrete=0.1, rework=0.0, review=0.0, unknown=0.79, spec=0.1, regression=0.1),
+        )
+        aggregate = aggregate_batches((batch,))
+        self.assertEqual(aggregate["overall"]["status"], "clear")
 
     def test_overall_risk_uses_highest_concrete_batch(self):
         severe = BatchAudit(
@@ -118,6 +131,56 @@ class AggregateTests(unittest.TestCase):
         )
         aggregate = aggregate_batches((severe, clean1, clean2))
         self.assertEqual(aggregate["overall"]["risk"], 0.90)
+
+    def test_risk_driver_identifies_signal_that_sets_risk(self):
+        batch = BatchAudit(
+            index=1,
+            paths=("spec.md",),
+            chars=10,
+            result=result(concrete=0.57, rework=0.20, spec=0.83, regression=0.60),
+        )
+        aggregate = aggregate_batches((batch,))
+        item = aggregate["highest_risk_batches"][0]
+        self.assertEqual(item["risk"], 0.83)
+        self.assertEqual(item["risk_driver"], "spec_mismatch")
+        self.assertEqual(item["rework_probability"], 0.20)
+
+    def test_status_trigger_keeps_actionable_batch_even_when_not_top_risk(self):
+        batches = []
+        for index in range(1, 11):
+            batches.append(BatchAudit(
+                index=index,
+                paths=(f"risk{index}.py",),
+                chars=10,
+                result=result(concrete=0.54, rework=0.0, review=0.0, spec=0.1, regression=0.1),
+            ))
+        batches.append(BatchAudit(
+            index=11,
+            paths=("actionable.py",),
+            chars=10,
+            result=result(concrete=0.10, rework=0.10, review=0.85, spec=0.10, regression=0.10),
+        ))
+
+        aggregate = aggregate_batches(tuple(batches))
+        self.assertEqual(aggregate["overall"]["status"], "review")
+        trigger = aggregate["overall"]["status_trigger"]
+        self.assertEqual(trigger["kind"], "actionable_probability")
+        self.assertEqual(trigger["batch_index"], 11)
+        self.assertAlmostEqual(trigger["value"], 0.95)
+        self.assertNotIn(11, [item["index"] for item in aggregate["highest_risk_batches"]])
+
+    def test_unknown_trigger_records_source_batch(self):
+        batch = BatchAudit(
+            index=7,
+            paths=("unknown.py",),
+            chars=10,
+            result=result(concrete=0.1, rework=0.0, review=0.0, unknown=0.95, spec=0.1, regression=0.1),
+        )
+        aggregate = aggregate_batches((batch,))
+        trigger = aggregate["overall"]["status_trigger"]
+        self.assertEqual(trigger["kind"], "unknown_probability")
+        self.assertEqual(trigger["batch_index"], 7)
+        self.assertAlmostEqual(trigger["value"], 0.95)
 
 
 if __name__ == "__main__":

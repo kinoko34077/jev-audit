@@ -183,6 +183,9 @@ With the Pilot extra installed, both CLI and MCP call the existing Audit Core
 through the Runtime kernel. Without it, both fall back to the existing direct
 call path. This is a measurement boundary, not a CLI/MCP Surface Pack.
 
+The preparation evidence and pending live-validation boundary are recorded in
+[docs/RUNTIME_PILOT.md](docs/RUNTIME_PILOT.md).
+
 ## レポートの読み方
 
 - `risk`: 各batchの `concrete_issue / spec_mismatch / regression_risk` の最大値を求め、その中の最大値を表示します。`risk=82%` はrepo全体の危険度ではなく、どこか1 batchで出た最大シグナルです。

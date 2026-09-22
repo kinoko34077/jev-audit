@@ -58,6 +58,7 @@ def _overall_status(ranked: list[dict[str, Any]]) -> tuple[str, dict[str, Any] |
         return "rework", {
             "kind": "concrete_and_rework",
             "batch_index": int(trigger["index"]),
+            "paths": list(trigger.get("paths", [])),
             "concrete_issue": float(trigger["concrete_issue"]),
             "rework_probability": float(trigger["rework_probability"]),
         }
@@ -67,6 +68,7 @@ def _overall_status(ranked: list[dict[str, Any]]) -> tuple[str, dict[str, Any] |
         return "review", {
             "kind": "concrete_risk",
             "batch_index": int(highest_risk["index"]),
+            "paths": list(highest_risk.get("paths", [])),
             "value": float(highest_risk["risk"]),
             "risk_driver": str(highest_risk.get("risk_driver", "unknown")),
         }
@@ -80,6 +82,7 @@ def _overall_status(ranked: list[dict[str, Any]]) -> tuple[str, dict[str, Any] |
         return "review", {
             "kind": "actionable_probability",
             "batch_index": int(actionable["index"]),
+            "paths": list(actionable.get("paths", [])),
             "value": float(actionable["actionable_probability"]),
         }
 
@@ -91,6 +94,7 @@ def _overall_status(ranked: list[dict[str, Any]]) -> tuple[str, dict[str, Any] |
         return "unknown", {
             "kind": "unknown_probability",
             "batch_index": int(unknown["index"]),
+            "paths": list(unknown.get("paths", [])),
             "value": float(unknown["unknown_probability"]),
         }
 

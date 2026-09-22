@@ -183,11 +183,12 @@ python -m pip install -e ".[pilot]"
 
 When `kinotch_runtime` is importable (for example, after installing the pinned
 Pilot extra), both CLI and MCP call the existing Audit Core through the Runtime
-kernel. If the package cannot be imported, the bridge uses the existing direct
-Audit Core path. This is a measurement boundary, not a CLI/MCP Surface Pack.
-Known audit and provider failures retain a structured code, the original
-message, and exception metadata where available; truly unexpected Runtime
-failures keep the Runtime kernel's `INTERNAL_ERROR` redaction.
+kernel. When it is not importable, the bridge uses the existing direct Audit
+Core path; installing the extra is not itself the switching condition. This is
+a measurement boundary, not a CLI/MCP Surface Pack. Known audit and provider
+failures retain a structured code, the original message, and exception metadata
+where available; unknown Runtime failures are re-raised for the Runtime
+kernel's `INTERNAL_ERROR` redaction.
 
 The evaluated live Pilot evidence and remaining Contract boundary are recorded in
 [docs/RUNTIME_PILOT.md](docs/RUNTIME_PILOT.md).
@@ -198,7 +199,7 @@ The evaluated live Pilot evidence and remaining Contract boundary are recorded i
 - `concrete_issue`: ファイル内容から直接読める欠陥・矛盾候補
 - `local_status`: `clear / review / rework / unknown` の確率分布。`actionable` は `review + rework` で、詳細確認や修正へ回す度合いです。`unknown` は問題の確率ではなく、局所的な判断材料の不足を表します。
 - `elapsed`: 実行開始から終了までのwall-clock時間
-- `reason`: statusの判定条件とbatch（triggerがある場合に表示）
+- `reason`: statusの判定条件とbatch。triggerには対象`paths`も含まれます。
 - `api work`: 並列Jev requestの処理時間合計であり、実待ち時間ではない
 
 GREENは安全証明ではありません。riskの値は正解率やrepo品質スコアでもありません。いずれのstatusでも、テスト・実操作・詳細レビューを省略する根拠にはなりません。

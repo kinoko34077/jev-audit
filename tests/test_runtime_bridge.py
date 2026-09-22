@@ -46,6 +46,12 @@ class _FakeRegistry:
             return self.registered[request.action_id](request, context)
         except _FakeErrorException as exception:
             return _FakeResult("failed", error=exception.error)
+        except Exception:
+            # Mirror the Runtime kernel's contract for unexpected failures.
+            return _FakeResult(
+                "failed",
+                error=_FakeError("INTERNAL_ERROR", "Action execution failed"),
+            )
 
 
 def _runtime():
@@ -146,17 +152,18 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(429, raised.exception.error.details["status"])
         self.assertEqual("req-test", raised.exception.error.details["request_id"])
 
-    def test_runtime_preserves_generic_audit_error_message(self):
+    def test_runtime_redacts_unknown_exception_via_runtime_kernel(self):
         fake_runtime = _runtime()
-        error = OSError("provider connection closed")
+        error = RuntimeError("secret internal implementation detail")
         with patch.object(runtime_bridge, "_load_runtime", return_value=fake_runtime), patch.object(
             runtime_bridge, "_legacy_audit", side_effect=error
         ):
             with self.assertRaises(runtime_bridge.RuntimeAuditError) as raised:
                 runtime_bridge.run_audit(Path("repo"))
 
-        self.assertEqual("AUDIT_ERROR", raised.exception.error.code)
-        self.assertEqual(str(error), raised.exception.error.message)
+        self.assertEqual("INTERNAL_ERROR", raised.exception.error.code)
+        self.assertEqual("Action execution failed", raised.exception.error.message)
+        self.assertNotIn("secret internal implementation detail", raised.exception.error.message)
 
     @unittest.skipUnless(
         importlib.util.find_spec("kinotch_runtime"),

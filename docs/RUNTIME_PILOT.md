@@ -4,7 +4,8 @@ Status: evaluation complete; Runtime remains optional and provisional
 
 ## Current implementation
 
-- `jev_audit/runtime_bridge.py` is an optional 83-line boundary.
+- `jev_audit/runtime_bridge.py` is an optional boundary. Its line count is not
+  a contract; implementation details are kept in the source and its tests.
 - CLI and MCP import the same `run_audit` bridge entry point.
 - Without the `pilot` extra, the bridge calls the existing Audit Core directly.
 - With the pinned `kinotch-runtime` package installed, the bridge registers and
@@ -14,9 +15,15 @@ Status: evaluation complete; Runtime remains optional and provisional
 
 ## Evidence
 
-- Existing jev-audit suite: 35 tests passed without Runtime installed.
-- Full suite with the Runtime source available: 37 tests passed; the actual
-  Runtime bridge and expected-error tests executed.
+- The original Pilot evidence below is retained as a historical record from
+  before the error-bridge hardening; it is not a current CI claim.
+- Current local core suite: 41 tests ran with one optional Runtime integration
+  test skipped when the Pilot extra is absent.
+- Current local optional-integration suite: 41 tests passed with
+  `kinotch-runtime`, `mcp`, and `typesafe-sdk` installed; the actual Runtime
+  kernel integration test executed.
+- Current bridge tests cover known provider error preservation and unknown
+  exception redaction through the Runtime kernel's `INTERNAL_ERROR` contract.
 - Runtime repository Contract suite: 18 tests passed.
 - Direct CLI live run: 14 files, 2 batches, `review`, exit 0.
 - Runtime CLI live run: 14 files, 2 batches, `review`, exit 0.
@@ -34,8 +41,8 @@ Status: evaluation complete; Runtime remains optional and provisional
   keeps the direct legacy path.
 - Expected input, no-auditable-file, and known provider failures retain exit
   code 2 and receive structured Runtime codes with the original message at the
-  bridge boundary. Truly unexpected Runtime failures remain redacted by the
-  Runtime kernel as `INTERNAL_ERROR`.
+  bridge boundary. Unknown bridge exceptions are re-raised so the Runtime
+  kernel redacts them as `INTERNAL_ERROR` with its generic failure message.
 
 ### What did not reduce complexity
 

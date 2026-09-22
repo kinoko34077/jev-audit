@@ -276,6 +276,8 @@ full scanは節目に行う
 
 導入直後から`--fail-on review`でCIを止めると、YELLOWやUNKNOWNでbuildが止まります。まずは`never`で傾向を見るか、必要なら`rework`から始め、詳細確認の結果を蓄積してからgateを調整します。status由来の終了判定であり、API key不足や実行エラーは別途失敗します。
 
+リポジトリのGitHub Actionsでは、通常suiteをPython 3.10〜3.14で実行し、別jobで`.[mcp,pilot]`をインストールしたMCP・Runtime・TypeSafe SDKのimportと同suiteを確認します。
+
 ## 13. 避ける使い方
 
 - GREENだからtestや実操作確認を省く

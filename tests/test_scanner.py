@@ -69,6 +69,28 @@ class ScannerTests(unittest.TestCase):
             paths = {item.path for item in result.files}
             self.assertIn("staged.py", paths)
 
+    def test_changed_only_does_not_fallback_on_non_head_git_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+
+            def fake_run_git(_root, *args):
+                if args == ("rev-parse", "--verify", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
+                if args == ("diff", "--name-only", "HEAD", "--"):
+                    return subprocess.CompletedProcess(
+                        args,
+                        128,
+                        stdout="",
+                        stderr="fatal: simulated diff failure",
+                    )
+                raise AssertionError(f"unexpected git command: {args}")
+
+            with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
+                "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ):
+                with self.assertRaisesRegex(RuntimeError, "simulated diff failure"):
+                    scan_directory(root, ScanOptions(changed_only=True))
+
     @unittest.skipUnless(shutil.which("git"), "git is required for this test")
     def test_changed_only_reports_deleted_files(self):
         with tempfile.TemporaryDirectory() as temp:

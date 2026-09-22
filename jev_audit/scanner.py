@@ -100,6 +100,16 @@ def _is_git_root(root: Path) -> bool:
         return False
 
 
+def _git_failure(operation: str, result: subprocess.CompletedProcess[str]) -> RuntimeError:
+    detail = (result.stderr or result.stdout or "unknown Git error").strip()
+    return RuntimeError(f"{operation} failed: {detail}")
+
+
+def _is_unborn_head(result: subprocess.CompletedProcess[str]) -> bool:
+    detail = f"{result.stdout}\n{result.stderr}".lower()
+    return "needed a single revision" in detail or "unknown revision" in detail
+
+
 def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[str, ...]] | None:
     if not _is_git_root(root):
         if changed_only:
@@ -108,19 +118,29 @@ def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[s
 
     deleted_names: set[str] = set()
     if changed_only:
-        changed = _run_git(root, "diff", "--name-only", "HEAD", "--")
-        if changed.returncode == 0:
+        head = _run_git(root, "rev-parse", "--verify", "HEAD")
+        if head.returncode != 0 and not _is_unborn_head(head):
+            raise _git_failure("git rev-parse HEAD", head)
+
+        if head.returncode != 0:
+            # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
+            listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
+            if listed.returncode != 0:
+                raise _git_failure("git ls-files", listed)
+            names = set(listed.stdout.splitlines())
+        else:
+            changed = _run_git(root, "diff", "--name-only", "HEAD", "--")
+            if changed.returncode != 0:
+                raise _git_failure("git diff HEAD", changed)
             untracked = _run_git(root, "ls-files", "--others", "--exclude-standard")
+            if untracked.returncode != 0:
+                raise _git_failure("git ls-files", untracked)
             changed_names = set(changed.stdout.splitlines())
             names = changed_names | set(untracked.stdout.splitlines())
             deleted_names = {
                 name for name in changed_names
                 if name.strip() and not (root / name).exists()
             }
-        else:
-            # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
-            listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
-            names = set(listed.stdout.splitlines())
     else:
         listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
         names = set(listed.stdout.splitlines())

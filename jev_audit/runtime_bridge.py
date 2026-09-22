@@ -63,6 +63,25 @@ def _action_error_for_exception(runtime: SimpleNamespace, exc: Exception) -> Any
     return runtime.ActionError(code=code, message=message, details=details)
 
 
+def _is_known_action_error(exc: Exception) -> bool:
+    """Return whether the bridge is allowed to expose this failure to Runtime."""
+    if isinstance(
+        exc,
+        (
+            FileNotFoundError,
+            ValueError,
+            ModuleNotFoundError,
+            PermissionError,
+            TimeoutError,
+            ConnectionError,
+        ),
+    ):
+        return True
+    if isinstance(exc, RuntimeError) and str(exc) == _NO_AUDITABLE_FILES:
+        return True
+    return type(exc).__name__ in _PROVIDER_ERROR_CODES
+
+
 def _load_runtime() -> SimpleNamespace | None:
     """Load the optional Runtime package without changing the default install."""
     try:
@@ -106,15 +125,9 @@ def run_audit(path: str | Path = ".", **options: Any) -> Any:
         del context
         try:
             report = _legacy_audit(request.input["path"], **request.input["options"])
-        except FileNotFoundError as exc:
-            raise runtime.ActionErrorException(
-                runtime.ActionError(code="NOT_FOUND", message=str(exc))
-            ) from exc
-        except ValueError as exc:
-            raise runtime.ActionErrorException(
-                runtime.ActionError(code="INVALID_INPUT", message=str(exc))
-            ) from exc
         except Exception as exc:
+            if not _is_known_action_error(exc):
+                raise
             raise runtime.ActionErrorException(
                 _action_error_for_exception(runtime, exc)
             ) from exc

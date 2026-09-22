@@ -167,6 +167,7 @@ class AggregateTests(unittest.TestCase):
         self.assertEqual(trigger["kind"], "actionable_probability")
         self.assertEqual(trigger["batch_index"], 11)
         self.assertAlmostEqual(trigger["value"], 0.95)
+        self.assertEqual(trigger["paths"], ["actionable.py"])
         self.assertNotIn(11, [item["index"] for item in aggregate["highest_risk_batches"]])
 
     def test_unknown_trigger_records_source_batch(self):
@@ -181,6 +182,7 @@ class AggregateTests(unittest.TestCase):
         self.assertEqual(trigger["kind"], "unknown_probability")
         self.assertEqual(trigger["batch_index"], 7)
         self.assertAlmostEqual(trigger["value"], 0.95)
+        self.assertEqual(trigger["paths"], ["unknown.py"])
 
 
 if __name__ == "__main__":

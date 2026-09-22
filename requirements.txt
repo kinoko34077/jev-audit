@@ -1,3 +1,5 @@
-typesafe-sdk
+# pyproject.toml is canonical; this file mirrors the core dependency for
+# simple pip installs that do not consume project metadata.
+typesafe-sdk>=0.7,<0.8
 # MCPを使う場合:
 # mcp>=2,<3

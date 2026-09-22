@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Check out repository
@@ -29,4 +29,25 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e .
 
       - name: Run test suite
+        run: python -m unittest discover -s tests -v
+
+  optional-integrations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install optional integrations
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[mcp,pilot]"
+
+      - name: Import optional integrations
+        run: python -c "import kinotch_runtime, mcp, typesafe_sdk; print('optional imports ok')"
+
+      - name: Run test suite with optional integrations
         run: python -m unittest discover -s tests -v

@@ -20,7 +20,14 @@ class RuntimeAuditError(RuntimeError):
 def _load_runtime() -> SimpleNamespace | None:
     """Load the optional Runtime package without changing the default install."""
     try:
-        from kinotch_runtime import ActionContext, ActionRegistry, ActionRequest, ActionResult
+        from kinotch_runtime import (
+            ActionContext,
+            ActionError,
+            ActionErrorException,
+            ActionRegistry,
+            ActionRequest,
+            ActionResult,
+        )
     except ModuleNotFoundError as exc:
         if exc.name != "kinotch_runtime":
             raise
@@ -28,6 +35,8 @@ def _load_runtime() -> SimpleNamespace | None:
 
     return SimpleNamespace(
         ActionContext=ActionContext,
+        ActionError=ActionError,
+        ActionErrorException=ActionErrorException,
         ActionRegistry=ActionRegistry,
         ActionRequest=ActionRequest,
         ActionResult=ActionResult,
@@ -49,7 +58,16 @@ def run_audit(path: str | Path = ".", **options: Any) -> Any:
 
     def audit_action(request: Any, context: Any) -> Any:
         del context
-        report = _legacy_audit(request.input["path"], **request.input["options"])
+        try:
+            report = _legacy_audit(request.input["path"], **request.input["options"])
+        except FileNotFoundError as exc:
+            raise runtime.ActionErrorException(
+                runtime.ActionError(code="NOT_FOUND", message=str(exc))
+            ) from exc
+        except ValueError as exc:
+            raise runtime.ActionErrorException(
+                runtime.ActionError(code="INVALID_INPUT", message=str(exc))
+            ) from exc
         return runtime.ActionResult.success(data=report)
 
     registry.register("repo.audit", audit_action)

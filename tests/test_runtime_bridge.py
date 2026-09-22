@@ -18,6 +18,18 @@ class _FakeResult:
         return cls("success", data=data)
 
 
+class _FakeError:
+    def __init__(self, code, message):
+        self.code = code
+        self.message = message
+
+
+class _FakeErrorException(Exception):
+    def __init__(self, error):
+        self.error = error
+        super().__init__(error.message)
+
+
 class _FakeRegistry:
     last = None
 
@@ -29,7 +41,10 @@ class _FakeRegistry:
         self.registered[action_id] = handler
 
     def execute(self, request, context):
-        return self.registered[request.action_id](request, context)
+        try:
+            return self.registered[request.action_id](request, context)
+        except _FakeErrorException as exception:
+            return _FakeResult("failed", error=exception.error)
 
 
 class RuntimeBridgeTests(unittest.TestCase):
@@ -47,6 +62,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         expected = object()
         fake_runtime = SimpleNamespace(
             ActionContext=lambda: object(),
+            ActionError=_FakeError,
+            ActionErrorException=_FakeErrorException,
             ActionRegistry=_FakeRegistry,
             ActionRequest=lambda action_id, input: SimpleNamespace(
                 action_id=action_id, input=input
@@ -61,6 +78,27 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIs(expected, actual)
         self.assertIn("repo.audit", _FakeRegistry.last.registered)
         legacy.assert_called_once_with(Path("repo"), profile="generic", workers=1)
+
+    def test_runtime_preserves_expected_input_error_codes(self):
+        fake_runtime = SimpleNamespace(
+            ActionContext=lambda: object(),
+            ActionError=_FakeError,
+            ActionErrorException=_FakeErrorException,
+            ActionRegistry=_FakeRegistry,
+            ActionRequest=lambda action_id, input: SimpleNamespace(
+                action_id=action_id, input=input
+            ),
+            ActionResult=_FakeResult,
+        )
+        with patch.object(runtime_bridge, "_load_runtime", return_value=fake_runtime), patch.object(
+            runtime_bridge,
+            "_legacy_audit",
+            side_effect=FileNotFoundError("profile not found"),
+        ):
+            with self.assertRaises(runtime_bridge.RuntimeAuditError) as raised:
+                runtime_bridge.run_audit(Path("repo"), profile="missing")
+
+        self.assertEqual("NOT_FOUND", raised.exception.error.code)
 
     @unittest.skipUnless(
         importlib.util.find_spec("kinotch_runtime"),

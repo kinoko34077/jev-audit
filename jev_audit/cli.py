@@ -6,9 +6,9 @@ import os
 from pathlib import Path
 import sys
 
-from .auditor import audit_directory
 from .profiles import available_profiles
 from .reporting import format_report, write_json
+from .runtime_bridge import run_audit
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        report = audit_directory(
+        report = run_audit(
             args.path,
             profile=args.profile,
             changed_only=args.changed_only,

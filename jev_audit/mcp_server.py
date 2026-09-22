@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .auditor import audit_directory as run_audit
 from .profiles import available_profiles
+from .runtime_bridge import run_audit
 
 
 def _resolve_audit_path(path: str | None) -> Path:

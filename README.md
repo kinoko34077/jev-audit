@@ -169,6 +169,20 @@ jev-audit-mcp
 
 Codexではactive workspace/repositoryの絶対pathをtool引数 `path` として渡すのが確実です。Claude Codeでは`path`を明示してもよく、省略時は`CLAUDE_PROJECT_DIR`を使用します。CLIとMCPは同じAudit Coreを使用します。
 
+## KiNoTch Runtime Pilot
+
+The first Runtime Pilot is optional and does not change the default install or
+the Audit Core. Install the pinned Runtime reference package when evaluating
+the shared `repo.audit` Action boundary:
+
+```powershell
+python -m pip install -e ".[pilot]"
+```
+
+With the Pilot extra installed, both CLI and MCP call the existing Audit Core
+through the Runtime kernel. Without it, both fall back to the existing direct
+call path. This is a measurement boundary, not a CLI/MCP Surface Pack.
+
 ## レポートの読み方
 
 - `risk`: 各batchの `concrete_issue / spec_mismatch / regression_risk` の最大値を求め、その中の最大値を表示します。`risk=82%` はrepo全体の危険度ではなく、どこか1 batchで出た最大シグナルです。

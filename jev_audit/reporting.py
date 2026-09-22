@@ -49,6 +49,12 @@ def format_report(report: AuditReport) -> str:
             lines.append(
                 f"reason : unknown={_pct(float(trigger.get('value', 0.0)))} at batch #{batch_index}"
             )
+        paths = trigger.get("paths", ())
+        if isinstance(paths, (list, tuple)) and paths:
+            shown = ", ".join(str(path) for path in paths[:5])
+            if len(paths) > 5:
+                shown += f", ... (+{len(paths) - 5})"
+            lines.append(f"trigger paths: {shown}")
     lines.append(f"risk   : {_pct(float(overall.get('risk', 0.0)))} (highest concrete-risk batch)")
     lines.append(f"root   : {report.root}")
     lines.append(f"profile: {report.profile}")

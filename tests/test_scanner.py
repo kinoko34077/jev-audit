@@ -74,8 +74,10 @@ class ScannerTests(unittest.TestCase):
             root = Path(temp)
 
             def fake_run_git(_root, *args):
-                if args == ("rev-parse", "--verify", "HEAD"):
-                    return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
+                if args == ("symbolic-ref", "--quiet", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
+                if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc123 refs/heads/main\n", stderr="")
                 if args == ("diff", "--name-only", "HEAD", "--"):
                     return subprocess.CompletedProcess(
                         args,
@@ -90,6 +92,52 @@ class ScannerTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "simulated diff failure"):
                     scan_directory(root, ScanOptions(changed_only=True))
+
+    def test_full_scan_does_not_hide_git_ls_files_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+
+            def fake_run_git(_root, *args):
+                if args == ("ls-files", "-co", "--exclude-standard"):
+                    return subprocess.CompletedProcess(
+                        args,
+                        128,
+                        stdout="",
+                        stderr="fatal: simulated ls-files failure",
+                    )
+                raise AssertionError(f"unexpected git command: {args}")
+
+            with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
+                "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ):
+                with self.assertRaisesRegex(RuntimeError, "simulated ls-files failure"):
+                    scan_directory(root, ScanOptions())
+
+    def test_changed_only_unborn_head_uses_ref_state_not_error_text(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "new.py").write_text("x=1", encoding="utf-8")
+
+            def fake_run_git(_root, *args):
+                if args == ("symbolic-ref", "--quiet", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
+                if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
+                    return subprocess.CompletedProcess(
+                        args,
+                        1,
+                        stdout="",
+                        stderr="fatal: révision introuvable",
+                    )
+                if args == ("ls-files", "-co", "--exclude-standard"):
+                    return subprocess.CompletedProcess(args, 0, stdout="new.py\n", stderr="")
+                raise AssertionError(f"unexpected git command: {args}")
+
+            with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
+                "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ):
+                result = scan_directory(root, ScanOptions(changed_only=True))
+
+            self.assertEqual([item.path for item in result.files], ["new.py"])
 
     @unittest.skipUnless(shutil.which("git"), "git is required for this test")
     def test_changed_only_reports_deleted_files(self):

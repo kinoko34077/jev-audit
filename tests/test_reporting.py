@@ -38,6 +38,7 @@ class ReportingTests(unittest.TestCase):
                     "batch_index": 1,
                     "value": 0.83,
                     "risk_driver": "spec_mismatch",
+                    "paths": ["a.py"],
                 },
             },
             "signals": {
@@ -75,6 +76,7 @@ class ReportingTests(unittest.TestCase):
 
         text = format_report(report)
         self.assertIn("reason : risk= 83.0% via=spec_mismatch at batch #1", text)
+        self.assertIn("trigger paths: a.py", text)
         self.assertIn("elapsed: 123.4 ms (wall-clock)", text)
         self.assertIn("api work: 80.0 ms", text)
         self.assertIn("via=spec_mismatch", text)

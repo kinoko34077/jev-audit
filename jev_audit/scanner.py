@@ -105,9 +105,27 @@ def _git_failure(operation: str, result: subprocess.CompletedProcess[str]) -> Ru
     return RuntimeError(f"{operation} failed: {detail}")
 
 
-def _is_unborn_head(result: subprocess.CompletedProcess[str]) -> bool:
-    detail = f"{result.stdout}\n{result.stderr}".lower()
-    return "needed a single revision" in detail or "unknown revision" in detail
+def _git_head_exists(root: Path) -> bool:
+    """Detect an unborn branch from ref state rather than localized stderr."""
+    symbolic = _run_git(root, "symbolic-ref", "--quiet", "HEAD")
+    if symbolic.returncode == 0:
+        ref = symbolic.stdout.strip()
+        if not ref:
+            raise _git_failure("git symbolic-ref HEAD", symbolic)
+        ref_check = _run_git(root, "show-ref", "--verify", "--quiet", ref)
+        if ref_check.returncode == 0:
+            return True
+        if ref_check.returncode == 1:
+            return False
+        raise _git_failure("git show-ref HEAD", ref_check)
+
+    if symbolic.returncode == 1:
+        # Detached HEADs have no symbolic ref; verify the commit directly.
+        head = _run_git(root, "rev-parse", "--verify", "HEAD")
+        if head.returncode == 0:
+            return True
+        raise _git_failure("git rev-parse HEAD", head)
+    raise _git_failure("git symbolic-ref HEAD", symbolic)
 
 
 def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[str, ...]] | None:
@@ -118,11 +136,7 @@ def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[s
 
     deleted_names: set[str] = set()
     if changed_only:
-        head = _run_git(root, "rev-parse", "--verify", "HEAD")
-        if head.returncode != 0 and not _is_unborn_head(head):
-            raise _git_failure("git rev-parse HEAD", head)
-
-        if head.returncode != 0:
+        if not _git_head_exists(root):
             # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
             listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
             if listed.returncode != 0:
@@ -143,6 +157,8 @@ def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[s
             }
     else:
         listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
+        if listed.returncode != 0:
+            raise _git_failure("git ls-files", listed)
         names = set(listed.stdout.splitlines())
 
     result: list[Path] = []

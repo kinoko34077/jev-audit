@@ -1,6 +1,6 @@
 # jev-audit 利用ガイド
 
-このガイドは、`jev-audit v0.2.8`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
+このガイドは、`jev-audit v0.2.9`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
 
 ## 1. このツールの位置付け
 

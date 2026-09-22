@@ -1,5 +1,7 @@
 # jev-audit
 
+[![Tests](https://github.com/kinoko34077/jev-audit/actions/workflows/tests.yml/badge.svg)](https://github.com/kinoko34077/jev-audit/actions/workflows/tests.yml)
+
 TypeSafe AI **Jev** を使って、現在のディレクトリや任意のリポジトリを高速に一次監査する小型ツールです。
 
 目的は完全監査ではなく、**ファイル全体をざっと見て、具体的に怪しい箇所を早く絞ること**です。
@@ -179,9 +181,10 @@ the shared `repo.audit` Action boundary:
 python -m pip install -e ".[pilot]"
 ```
 
-With the Pilot extra installed, both CLI and MCP call the existing Audit Core
-through the Runtime kernel. Without it, both fall back to the existing direct
-call path. This is a measurement boundary, not a CLI/MCP Surface Pack.
+When `kinotch_runtime` is importable (for example, after installing the pinned
+Pilot extra), both CLI and MCP call the existing Audit Core through the Runtime
+kernel. If the package cannot be imported, the bridge uses the existing direct
+Audit Core path. This is a measurement boundary, not a CLI/MCP Surface Pack.
 
 The evaluated live Pilot evidence and remaining Contract boundary are recorded in
 [docs/RUNTIME_PILOT.md](docs/RUNTIME_PILOT.md).

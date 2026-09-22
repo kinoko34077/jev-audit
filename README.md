@@ -4,6 +4,8 @@ TypeSafe AI **Jev** を使って、現在のディレクトリや任意のリポ
 
 目的は完全監査ではなく、**ファイル全体をざっと見て、具体的に怪しい箇所を早く絞ること**です。
 
+詳細なLLMレビューやテストの前段で、広く浅く候補を絞る一次スクリーニング用途を想定しています。
+
 - 実装・設定・文書内の具体的な問題候補
 - 仕様・実装の食い違い候補
 - 回帰リスクの兆候
@@ -62,6 +64,25 @@ jev-audit . --json
 jev-audit . --fail-on rework
 ```
 
+## 推奨ワークフロー
+
+通常の開発では、テスト等の後に変更範囲を監査します。
+
+```text
+test / lint / typecheck
+  ↓
+jev-audit . --changed-only
+  ↓
+YELLOW / RED の理由と対象batchを確認
+```
+
+releaseや大きな変更の節目ではfull scanも行い、通常のテストと必要箇所の詳細レビューを続けます。
+
+- **GREEN**: 今回の対象で強いシグナルはありません。通常の検証は省略しません。
+- **YELLOW**: `reason` のbatchとpathsを優先して確認します。
+- **RED**: 修正候補として詳細レビューとテストを行います。
+- **UNKNOWN**: 判断材料が不足しています。関連contextや監査範囲を増やします。
+
 ## 処理
 
 ```text
@@ -119,7 +140,9 @@ jev-audit . --profile C:\rules\my-audit.json
 - `id_rsa`, `id_ed25519`
 - `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
 
-Gitが利用可能なGitリポジトリでは `.gitignore` も尊重します。Git未導入環境では通常のディレクトリ走査へ自動フォールバックします。
+対象path自体がGit repository rootで、Gitが利用可能な場合はGitから候補を列挙し、未追跡ファイルには `.gitignore` 等の標準除外規則を適用します。Git未導入環境やrepository内のsubdirectoryを対象にしたfull scanでは通常のdirectory走査になり、`.gitignore`は適用されません。`--changed-only`はGit repository rootでのみ使えます。
+
+これはファイル名・拡張子等による除外で、完全なDLPではありません。ソース内に直接書かれた鍵や機密情報は監査対象になり得ます。外部APIへの送信が認められている範囲で利用してください。詳しくは[利用ガイドのセキュリティ節](docs/USAGE_GUIDE.md)を参照してください。
 
 ## MCP
 
@@ -148,11 +171,17 @@ Codexではactive workspace/repositoryの絶対pathをtool引数 `path` とし�
 
 ## レポートの読み方
 
-- `risk`: `concrete_issue / spec_mismatch / regression_risk`のうち、全バッチで最も高い具体的リスク値
+- `risk`: 各batchの `concrete_issue / spec_mismatch / regression_risk` の最大値を求め、その中の最大値を表示します。`risk=82%` はrepo全体の危険度ではなく、どこか1 batchで出た最大シグナルです。
 - `concrete_issue`: ファイル内容から直接読める欠陥・矛盾候補
-- `local_status`: `clear / review / rework / unknown` の確率分布。`review + rework`は要確認判定に使い、`unknown`は情報不足として分離する
+- `local_status`: `clear / review / rework / unknown` の確率分布。`actionable` は `review + rework` で、詳細確認や修正へ回す度合いです。`unknown` は問題の確率ではなく、局所的な判断材料の不足を表します。
 - `elapsed`: 実行開始から終了までのwall-clock時間
-- `reason`: 最終statusを発生させた条件とbatch
+- `reason`: statusの判定条件とbatch（triggerがある場合に表示）
 - `api work`: 並列Jev requestの処理時間合計であり、実待ち時間ではない
 
-これは高速簡易監査です。テスト・実操作・詳細レビューの代替ではありません。
+GREENは安全証明ではありません。riskの値は正解率やrepo品質スコアでもありません。いずれのstatusでも、テスト・実操作・詳細レビューを省略する根拠にはなりません。
+
+## 精度を上げるには
+
+Jevの判断は各batchへ渡された情報に基づきます。短いREADMEやINDEXで正本と関連ファイルの場所を示し、currentとlegacyを区別し、日常利用では `--changed-only` やmodule単位のfocused scanで関連contextを集めます。root INDEXが全batchへ自動共有されるわけではありません。
+
+context設計、batchやskipの限界、custom profile、CI、MCP、token効率などは[詳細な利用ガイド](docs/USAGE_GUIDE.md)を参照してください。

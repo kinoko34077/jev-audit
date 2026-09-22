@@ -17,6 +17,52 @@ class RuntimeAuditError(RuntimeError):
         super().__init__(f"{error.code}: {error.message}")
 
 
+_NO_AUDITABLE_FILES = "No auditable text files found after exclusions"
+_PROVIDER_ERROR_CODES = {
+    "TypeSafeAuthenticationError": "PROVIDER_AUTHENTICATION",
+    "TypeSafePermissionDeniedError": "PROVIDER_PERMISSION_DENIED",
+    "TypeSafeNotFoundError": "PROVIDER_NOT_FOUND",
+    "TypeSafeBadRequestError": "PROVIDER_BAD_REQUEST",
+    "TypeSafeUnprocessableEntityError": "PROVIDER_UNPROCESSABLE",
+    "TypeSafeRateLimitError": "PROVIDER_RATE_LIMIT",
+    "TypeSafeInternalServerError": "PROVIDER_INTERNAL",
+    "TypeSafeAPIResponseValidationError": "PROVIDER_RESPONSE_INVALID",
+    "TypeSafeAPIError": "PROVIDER_API",
+}
+
+
+def _action_error_for_exception(runtime: SimpleNamespace, exc: Exception) -> Any:
+    """Convert known audit failures before Runtime redacts unexpected exceptions."""
+    exception_name = type(exc).__name__
+    if isinstance(exc, FileNotFoundError):
+        code = "NOT_FOUND"
+    elif isinstance(exc, ValueError):
+        code = "INVALID_INPUT"
+    elif isinstance(exc, ModuleNotFoundError):
+        code = "DEPENDENCY_ERROR"
+    elif isinstance(exc, PermissionError):
+        code = "PERMISSION_DENIED"
+    elif isinstance(exc, TimeoutError):
+        code = "API_TIMEOUT"
+    elif isinstance(exc, ConnectionError):
+        code = "API_CONNECTION"
+    elif isinstance(exc, RuntimeError) and str(exc) == _NO_AUDITABLE_FILES:
+        code = "NO_AUDITABLE_FILES"
+    else:
+        code = _PROVIDER_ERROR_CODES.get(exception_name, "AUDIT_ERROR")
+
+    details: dict[str, Any] = {
+        "exception_type": f"{type(exc).__module__}.{exception_name}",
+    }
+    for attribute in ("status", "request_id"):
+        value = getattr(exc, attribute, None)
+        if isinstance(value, (str, int)) and value:
+            details[attribute] = value
+
+    message = str(exc).strip() or exception_name
+    return runtime.ActionError(code=code, message=message, details=details)
+
+
 def _load_runtime() -> SimpleNamespace | None:
     """Load the optional Runtime package without changing the default install."""
     try:
@@ -67,6 +113,10 @@ def run_audit(path: str | Path = ".", **options: Any) -> Any:
         except ValueError as exc:
             raise runtime.ActionErrorException(
                 runtime.ActionError(code="INVALID_INPUT", message=str(exc))
+            ) from exc
+        except Exception as exc:
+            raise runtime.ActionErrorException(
+                _action_error_for_exception(runtime, exc)
             ) from exc
         return runtime.ActionResult.success(data=report)
 

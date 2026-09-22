@@ -185,6 +185,9 @@ When `kinotch_runtime` is importable (for example, after installing the pinned
 Pilot extra), both CLI and MCP call the existing Audit Core through the Runtime
 kernel. If the package cannot be imported, the bridge uses the existing direct
 Audit Core path. This is a measurement boundary, not a CLI/MCP Surface Pack.
+Known audit and provider failures retain a structured code, the original
+message, and exception metadata where available; truly unexpected Runtime
+failures keep the Runtime kernel's `INTERNAL_ERROR` redaction.
 
 The evaluated live Pilot evidence and remaining Contract boundary are recorded in
 [docs/RUNTIME_PILOT.md](docs/RUNTIME_PILOT.md).

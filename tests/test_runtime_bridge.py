@@ -19,9 +19,10 @@ class _FakeResult:
 
 
 class _FakeError:
-    def __init__(self, code, message):
+    def __init__(self, code, message, details=None):
         self.code = code
         self.message = message
+        self.details = details or {}
 
 
 class _FakeErrorException(Exception):
@@ -45,6 +46,19 @@ class _FakeRegistry:
             return self.registered[request.action_id](request, context)
         except _FakeErrorException as exception:
             return _FakeResult("failed", error=exception.error)
+
+
+def _runtime():
+    return SimpleNamespace(
+        ActionContext=lambda: object(),
+        ActionError=_FakeError,
+        ActionErrorException=_FakeErrorException,
+        ActionRegistry=_FakeRegistry,
+        ActionRequest=lambda action_id, input: SimpleNamespace(
+            action_id=action_id, input=input
+        ),
+        ActionResult=_FakeResult,
+    )
 
 
 class RuntimeBridgeTests(unittest.TestCase):
@@ -99,6 +113,50 @@ class RuntimeBridgeTests(unittest.TestCase):
                 runtime_bridge.run_audit(Path("repo"), profile="missing")
 
         self.assertEqual("NOT_FOUND", raised.exception.error.code)
+
+    def test_runtime_preserves_no_auditable_files_error(self):
+        fake_runtime = _runtime()
+        message = "No auditable text files found after exclusions"
+        with patch.object(runtime_bridge, "_load_runtime", return_value=fake_runtime), patch.object(
+            runtime_bridge, "_legacy_audit", side_effect=RuntimeError(message)
+        ):
+            with self.assertRaises(runtime_bridge.RuntimeAuditError) as raised:
+                runtime_bridge.run_audit(Path("repo"))
+
+        self.assertEqual("NO_AUDITABLE_FILES", raised.exception.error.code)
+        self.assertEqual(message, raised.exception.error.message)
+        self.assertEqual("builtins.RuntimeError", raised.exception.error.details["exception_type"])
+
+    def test_runtime_preserves_provider_error_meaning_and_message(self):
+        fake_runtime = _runtime()
+
+        class TypeSafeRateLimitError(Exception):
+            status = 429
+            request_id = "req-test"
+
+        error = TypeSafeRateLimitError("429 rate limit; retry later")
+        with patch.object(runtime_bridge, "_load_runtime", return_value=fake_runtime), patch.object(
+            runtime_bridge, "_legacy_audit", side_effect=error
+        ):
+            with self.assertRaises(runtime_bridge.RuntimeAuditError) as raised:
+                runtime_bridge.run_audit(Path("repo"))
+
+        self.assertEqual("PROVIDER_RATE_LIMIT", raised.exception.error.code)
+        self.assertEqual(str(error), raised.exception.error.message)
+        self.assertEqual(429, raised.exception.error.details["status"])
+        self.assertEqual("req-test", raised.exception.error.details["request_id"])
+
+    def test_runtime_preserves_generic_audit_error_message(self):
+        fake_runtime = _runtime()
+        error = OSError("provider connection closed")
+        with patch.object(runtime_bridge, "_load_runtime", return_value=fake_runtime), patch.object(
+            runtime_bridge, "_legacy_audit", side_effect=error
+        ):
+            with self.assertRaises(runtime_bridge.RuntimeAuditError) as raised:
+                runtime_bridge.run_audit(Path("repo"))
+
+        self.assertEqual("AUDIT_ERROR", raised.exception.error.code)
+        self.assertEqual(str(error), raised.exception.error.message)
 
     @unittest.skipUnless(
         importlib.util.find_spec("kinotch_runtime"),

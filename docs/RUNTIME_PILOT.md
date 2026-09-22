@@ -32,8 +32,10 @@ Status: evaluation complete; Runtime remains optional and provisional
   remained unchanged.
 - CLI and MCP use the same localized bridge, while the default installation
   keeps the direct legacy path.
-- Expected input errors retain exit code 2 and receive structured Runtime
-  codes at the bridge boundary.
+- Expected input, no-auditable-file, and known provider failures retain exit
+  code 2 and receive structured Runtime codes with the original message at the
+  bridge boundary. Truly unexpected Runtime failures remain redacted by the
+  Runtime kernel as `INTERNAL_ERROR`.
 
 ### What did not reduce complexity
 

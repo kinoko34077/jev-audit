@@ -175,12 +175,13 @@ probeはread-onlyであり、既存repoへBaseファイルやDefaultを投入し
 
 Surface / Tool互換性、doctor再検証、repository-local `.kinotch/` 書込み境界、
 structured command引数、Project-root path containment、Default Catalog
-semantic validation、既存ファイル衝突時のOVERRIDE記録を実装する。Base v0.3.4
+semantic validation、既存ファイル衝突時のOVERRIDE記録を実装する。Base v0.3.5
 としてこの安全点を固定する。
 
 ## Phase 4C — init / migrate and existing repository adoption
 
-既存repoは一括変更せず、`jev-audit` と `kinotch-api` の初回適用を完了した。
+既存repoは一括変更せず、`jev-audit`、`kinotch-api`、
+`lyric_reader_page` の初回適用を完了した。
 残りのrepoは明示判断
 とRepository Manifestが揃ったrepoだけへ段階適用する。
 

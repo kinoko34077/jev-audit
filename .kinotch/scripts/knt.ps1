@@ -279,6 +279,16 @@ function Add-RepositoryShapeSurface($SurfaceIds, $SurfaceStates, [string]$Surfac
     }
 }
 
+function Test-IsBaseVerificationWorkflow([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $leaf = Split-Path -Leaf $Path
+    if ($leaf -notin @("verify.yml", "verify.yaml")) { return $false }
+    $text = Get-Content -Raw -Encoding UTF8 -LiteralPath $Path
+    return $text -match "(?im)\.kinotch/scripts/knt\.ps1\s+doctor" -and
+        $text -match "(?im)\.kinotch/scripts/knt\.ps1\s+setup" -and
+        $text -match "(?im)\.kinotch/scripts/knt\.ps1\s+verify"
+}
+
 function Get-RepositoryShape($Catalog) {
     $surfaceIds = New-Object System.Collections.Generic.List[string]
     $surfaceStates = @{}
@@ -307,10 +317,13 @@ function Get-RepositoryShape($Catalog) {
     $workflowPath = Join-Path $Root ".github/workflows"
     if (Test-Path -LiteralPath $workflowPath -PathType Container) {
         [void]$markers.Add(".github/workflows")
-        $workflowFiles = @(Get-ChildItem -LiteralPath $workflowPath -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @(".yml", ".yaml") })
+        $workflowFiles = @(Get-ChildItem -LiteralPath $workflowPath -File -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in @(".yml", ".yaml") -and -not (Test-IsBaseVerificationWorkflow $_.FullName) })
         $workflowText = ($workflowFiles | ForEach-Object { Get-Content -Raw -Encoding UTF8 -LiteralPath $_.FullName }) -join "`n"
-        $hasVerificationGate = $workflowText -match "(?im)(npm\s+(?:run\s+)?(?:test|lint|typecheck|build)|pnpm\s+(?:test|lint|typecheck|build)|yarn\s+(?:test|lint|typecheck|build)|pytest|python\s+-m\s+(?:pytest|unittest)|cargo\s+(?:test|check|build)|knt(?:\.cmd)?\s+verify|\.kinotch/scripts/knt\.ps1\s+verify)"
-        Add-RepositoryShapeTool -ToolIds $toolIds -ToolStates $toolStates -ToolId "ci-test" -State $(if ($hasVerificationGate) { "OVERRIDE" } else { "DEFAULT" })
+        if ($workflowFiles.Count -gt 0) {
+            $hasVerificationGate = $workflowText -match "(?im)(npm\s+(?:run\s+)?(?:test|lint|typecheck|build)|pnpm\s+(?:test|lint|typecheck|build)|yarn\s+(?:test|lint|typecheck|build)|pytest|python\s+-m\s+(?:pytest|unittest)|cargo\s+(?:test|check|build)|knt(?:\.cmd)?\s+verify|\.kinotch/scripts/knt\.ps1\s+verify)"
+            Add-RepositoryShapeTool -ToolIds $toolIds -ToolStates $toolStates -ToolId "ci-test" -State $(if ($hasVerificationGate) { "OVERRIDE" } else { "DEFAULT" })
+        }
     }
     $publicPath = Join-Path $Root "public"
     $staticPath = Join-Path $Root "static"
@@ -425,7 +438,8 @@ function Get-MigrateToolEntries($Manifest, $Catalog, $Options, $Shape) {
     }
 
     $candidateIds = New-Object System.Collections.Generic.List[string]
-    if (Test-Path -LiteralPath (Join-Path $Root ".github/workflows/verify.yml") -PathType Leaf) {
+    $baseVerifyWorkflow = Join-Path $Root ".github/workflows/verify.yml"
+    if ((Test-Path -LiteralPath $baseVerifyWorkflow -PathType Leaf) -and -not (Test-IsBaseVerificationWorkflow $baseVerifyWorkflow)) {
         [void]$candidateIds.Add("ci-test")
     }
     $generatedCandidates = @(Get-ChildItem -LiteralPath (Join-Path $Root "project") -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object {

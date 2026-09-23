@@ -172,7 +172,8 @@ function Invoke-KntShapeMigrateFixture {
         [string]$WorkflowText = "name: Verify`nrun: npm test",
         [string]$PackageJson = '{"scripts":{"test":"node --test","build":"vite build"},"devDependencies":{"vite":"latest"}}',
         [switch]$GeneratedFile,
-        [switch]$IntegrityEvidence
+        [switch]$IntegrityEvidence,
+        [switch]$UseBaseWorkflow
     )
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("kinotch-shape-test-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
@@ -183,7 +184,9 @@ function Invoke-KntShapeMigrateFixture {
         New-Item -ItemType Directory -Path (Join-Path $tempRoot ".github/workflows") -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $tempRoot "public") -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $tempRoot "package.json") -Value $PackageJson -NoNewline
-        Set-Content -LiteralPath (Join-Path $tempRoot ".github/workflows/verify.yml") -Value $WorkflowText -NoNewline
+        if (-not $UseBaseWorkflow) {
+            Set-Content -LiteralPath (Join-Path $tempRoot ".github/workflows/verify.yml") -Value $WorkflowText -NoNewline
+        }
         Set-Content -LiteralPath (Join-Path $tempRoot "public/manifest.json") -Value '{"name":"Shape","start_url":"/"}' -NoNewline
         Set-Content -LiteralPath (Join-Path $tempRoot "service-worker.js") -Value "self.addEventListener('fetch', () => {});" -NoNewline
         if ($GeneratedFile) {
@@ -564,6 +567,12 @@ Invoke-TestCase "shape probe distinguishes deploy-only and verification CI" {
         Assert-True ($output -match "Candidate Default Pack 'ci-test': state OVERRIDE") "verification workflow was not marked OVERRIDE"
     }
 }
+Invoke-TestCase "shape probe ignores the Base common verification workflow" {
+    Invoke-KntShapeMigrateFixture -UseBaseWorkflow -AssertOutput {
+        param($root, $output)
+        Assert-True ($output -notmatch "Candidate Default Pack 'ci-test'") "Base common workflow was misclassified as an L2 ci-test Default"
+    }
+}
 Invoke-TestCase "shape probe distinguishes generated files from integrity checks" {
     Invoke-KntShapeMigrateFixture -GeneratedFile -AssertOutput {
         param($root, $output)
@@ -911,7 +920,7 @@ Invoke-TestCase "Base documentation and profile status are finalized" {
     Assert-True ($runtime -match "ActionRequest") "Runtime candidate-contract content is missing"
     Assert-True ($workflow -match "knt\.ps1 setup") "Base CI setup step is missing"
     Assert-Equal 0 @($surfaceRegistry.surfaces.PSObject.Properties).Count "Base Surface Registry should be empty"
-    Assert-Equal "0.3.4" $baseVersion "Base version"
+    Assert-Equal "0.3.5" $baseVersion "Base version"
     Assert-True (@($catalog.defaults | Where-Object { $_.kind -eq "surface" }).Count -ge 8) "Surface Default catalog entries are incomplete"
     Assert-Equal 4 @($catalog.defaults | Where-Object { $_.kind -eq "tool" }).Count "Active Tool Default catalog count"
     foreach ($profileFile in Get-ChildItem (Join-Path $RepoRoot ".kinotch/profiles") -File) {

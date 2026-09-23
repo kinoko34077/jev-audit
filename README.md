@@ -149,7 +149,7 @@ jev-audit . --profile C:\rules\my-audit.json
 
 対象path自体がGit repository rootで、Gitが利用可能な場合はGitから候補を列挙し、未追跡ファイルには `.gitignore` 等の標準除外規則を適用します。Git未導入環境やrepository内のsubdirectoryを対象にしたfull scanでは通常のdirectory走査になり、`.gitignore`は適用されません。`--changed-only`はGit repository rootでのみ使えます。変更がないcleanなrepositoryではno-opの`clear`を返し、exit 0になります。
 
-これはファイル名・拡張子等による除外で、完全なDLPではありません。ソース内に直接書かれた鍵や機密情報は監査対象になり得ます。外部APIへの送信が認められている範囲で利用してください。詳しくは[利用ガイドのセキュリティ節](docs/USAGE_GUIDE.md)を参照してください。
+これはファイル名・拡張子等による除外で、完全なDLPではありません。ソース内に直接書かれた鍵や機密情報は監査対象になり得ます。外部APIへの送信が認められている範囲で利用してください。`TYPESAFE_LOG_LEVEL=debug`やTypeSafe SDK loggerのDEBUGを有効にすると、request bodyに含まれるsource本文がローカルログやログ収集基盤へ出る可能性があるため、機密性のある監査ではDEBUG loggingを無効にしてください。詳しくは[利用ガイドのセキュリティ節](docs/USAGE_GUIDE.md)を参照してください。
 
 ## MCP
 

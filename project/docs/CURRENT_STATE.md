@@ -2,15 +2,18 @@
 
 Base version: `0.3.8`
 
-Last verified: 2026-09-23 — KiNoTch Base v0.3.8 Canary adoption
+Last verified: 2026-09-24 — Project integration fixes and verification
 
 ## Implemented
 
-- Repository-local KiNoTch Base v0.3.1 and Project Overlay
+- Repository-local KiNoTch Base v0.3.8 and Project Overlay
 - CLI and MCP Surface declarations
 - Structured setup and test commands mapped to the existing Python project
+- Base setup installs the enabled MCP extra; `.kinotch/` is excluded from normal
+  Project scans
 - Existing jev-audit CLI, MCP, Audit Core, and optional Runtime bridge retained
 - Existing Domain files remain at their original paths; no bulk move was performed
+- Changed-only skip-only sets return a normal `unknown` report without a Jev call
 
 ## Default state
 
@@ -27,9 +30,8 @@ Last verified: 2026-09-23 — KiNoTch Base v0.3.8 Canary adoption
 
 ## Next work
 
-1. Confirm the repository-local Base gate on GitHub Actions.
-2. Keep future Default changes explicit and preserve existing Project overrides.
-3. Consider a later path migration only as a separate, reviewed Project task.
+1. Keep future Default changes explicit and preserve existing Project overrides.
+2. Consider a later path migration only as a separate, reviewed Project task.
 
 ## Verification
 

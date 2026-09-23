@@ -33,6 +33,7 @@ IGNORED_DIRS = {
     ".idea",
     ".vs",
     ".audit",
+    ".kinotch",
 }
 
 KNOWN_LOCK_FILES = {

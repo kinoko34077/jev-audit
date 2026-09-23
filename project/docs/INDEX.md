@@ -2,3 +2,4 @@
 
 - [Current State](CURRENT_STATE.md)
 - [Current Specification](SPEC.md)
+- [Project-owned editing boundary](EDITING_BOUNDARY.md)

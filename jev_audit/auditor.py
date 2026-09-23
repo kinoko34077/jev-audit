@@ -73,12 +73,13 @@ def audit_directory(
         ),
     )
 
-    if not scan.files and not scan.git.get("deleted_paths"):
-        has_skipped_changes = bool(scan.skipped_counts or scan.skipped_sensitive_paths)
-        if not changed_only or has_skipped_changes:
+    if not scan.files:
+        if not changed_only:
             raise RuntimeError("No auditable text files found after exclusions")
         aggregate = aggregate_batches(())
-        aggregate["overall"]["status"] = "clear"
+        has_deleted_changes = bool(scan.git.get("deleted_paths"))
+        has_skipped_changes = bool(scan.skipped_counts or scan.skipped_sensitive_paths)
+        aggregate["overall"]["status"] = "unknown" if (has_deleted_changes or has_skipped_changes) else "clear"
         aggregate["wall_clock_ms"] = (time.perf_counter() - started) * 1000.0
         return AuditReport(
             root=scan.root,

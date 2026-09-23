@@ -99,7 +99,7 @@ jev-audit . --changed-only
 
 `--changed-only`はGitのHEADとの差分と、除外されていない未追跡ファイルを対象にします。削除済みファイルはパスを検出しますが、削除前の内容は監査できません。
 
-変更がないcleanなrepositoryではno-opの`clear`レポートを返します。Jev requestは発行せず、CLIのexit codeは0です。
+変更がないcleanなrepositoryではno-opの`clear`レポートを返します。Jev requestは発行せず、CLIのexit codeは0です。変更はあるものの全ファイルがsensitive、binary、lock、generatedなどでskipされた場合は、Jev requestなしの`unknown`レポートを返します。これは実行失敗ではなく、監査可能な本文がなかったことを示します。
 
 HEADがまだない新規repositoryでは、現在の追跡対象と除外されていない未追跡ファイルを候補にするfallbackがあります。この場合、通常の差分監査より広い範囲が選ばれることがあります。
 
@@ -206,7 +206,7 @@ Jev modelの既定値は`jev-1.13.0`です。`TYPESAFE_DEFAULT_MODEL`またはCL
 
 レポートの`skipped`には、binaryまたは対応できないencoding、sensitive file、lock/generated file、サイズ超過、削除済みファイルなど、監査対象に入らない理由が出ます。`.git`や`node_modules`等の特定directoryも対象外です。重要ファイルがskipされていないか確認し、skipがある状態で「repository全体を見た」と解釈しないでください。
 
-既知のlock fileやbuild directoryは除外されますが、vendor、legacy、過去release資料、evidence、大量JSONなどが常に自動除外されるわけではありません。Git管理下にあり、scannerの除外条件にも該当しない資料はfull scanに入る場合があります。noiseを減らすには日常の`--changed-only`、focused scan、資料の状態表示を使います。
+既知のlock fileやbuild directory、Repository Baseの`.kinotch/` directoryは除外されますが、vendor、legacy、過去release資料、evidence、大量JSONなどが常に自動除外されるわけではありません。Git管理下にあり、scannerの除外条件にも該当しない資料はfull scanに入る場合があります。noiseを減らすには日常の`--changed-only`、focused scan、資料の状態表示を使います。Base自体を監査する場合は、`jev-audit .kinotch`のように明示的に対象を指定してください。
 
 ## 8. custom profileと閾値
 
@@ -239,6 +239,8 @@ MCPから使う場合、日常の変更監査では`audit_directory`へrepositor
 ## 10. セキュリティと外部送信
 
 監査対象として読み込まれたテキストのpathと内容は、Jevを呼び出すため外部のTypeSafe APIへ送信されます。外部送信が許可されているrepositoryだけで使用してください。機密repositoryに使用できるかは、組織の規則と利用中の契約を確認して判断します。詳細は[TypeSafe AI Privacy Policy](https://typesafe.ai/legal/privacy-policy)や[Terms of Use](https://typesafe.ai/legal/terms)の現行版を確認してください。
+
+`TYPESAFE_LOG_LEVEL=debug`やTypeSafe SDK loggerのDEBUGを有効にすると、SDKのwire loggingがrequest bodyをログへ出し、監査対象source本文がローカルログやログ収集基盤へ残る可能性があります。機密性のある監査ではDEBUG loggingを無効にしてください。
 
 scannerは次の名前・拡張子のファイルを既定で除外します。
 

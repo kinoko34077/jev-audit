@@ -38,6 +38,21 @@ class ScannerTests(unittest.TestCase):
             self.assertIn("main.py", paths)
             self.assertNotIn(".audit/result.json", paths)
 
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_kinotch_directory_is_ignored_from_repository_scan(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / ".kinotch").mkdir()
+            (root / ".kinotch" / "fixture.txt").write_text("invalid fixture", encoding="utf-8")
+            (root / "main.py").write_text("print('ok')", encoding="utf-8")
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", ".kinotch/fixture.txt", "main.py"], check=True)
+
+            result = scan_directory(root, ScanOptions())
+            paths = {item.path for item in result.files}
+            self.assertIn("main.py", paths)
+            self.assertNotIn(".kinotch/fixture.txt", paths)
+
     def test_missing_git_falls_back_to_directory_scan(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

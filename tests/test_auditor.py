@@ -90,7 +90,7 @@ class AuditorTests(unittest.TestCase):
         self.assertEqual(report.batches, 0)
         audit_one.assert_not_called()
 
-    def test_changed_only_with_only_skipped_files_is_not_a_clean_noop(self):
+    def test_changed_only_with_only_skipped_files_returns_unknown_report(self):
         fake_scan = ScanResult(
             root="C:/repo",
             files=(),
@@ -99,8 +99,12 @@ class AuditorTests(unittest.TestCase):
             git={"is_git_repo": True, "deleted_paths": ()},
         )
         with patch("jev_audit.auditor.scan_directory", return_value=fake_scan):
-            with self.assertRaisesRegex(RuntimeError, "No auditable text files"):
-                audit_directory(".", changed_only=True)
+            report = audit_directory(".", changed_only=True)
+
+        self.assertEqual(report.status, "unknown")
+        self.assertEqual(report.files_scanned, 0)
+        self.assertEqual(report.batches, 0)
+        self.assertEqual(report.skipped_counts, {"sensitive": 1})
 
     def test_model_is_forwarded_to_each_batch(self):
         fake_scan = ScanResult(

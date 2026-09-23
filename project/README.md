@@ -21,6 +21,7 @@ repository root.
 - Optional Runtime bridge: `jev_audit.runtime_bridge`
 
 既存のCLI/MCP dispatch、Audit Core、Runtime optional pathはProject側の責務として保持します。
+`project/project.json` の `paths.source`、`paths.tests`、`paths.docs` が示すrootの既存Domain領域も、移行期間中はProject-ownedとして編集対象です。.kinotchとAGENTS.mdは共通Base層のため編集対象にしません。
 
 ## 最短利用方法
 

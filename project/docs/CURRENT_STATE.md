@@ -1,6 +1,8 @@
 # Current State
 
-Last verified: 2026-09-23 — KiNoTch Base v0.3.5 Canary adoption
+Base version: `0.3.7`
+
+Last verified: 2026-09-23 — KiNoTch Base v0.3.7 Canary adoption
 
 ## Implemented
 

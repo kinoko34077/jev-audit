@@ -173,7 +173,8 @@ function Invoke-KntShapeMigrateFixture {
         [string]$PackageJson = '{"scripts":{"test":"node --test","build":"vite build"},"devDependencies":{"vite":"latest"}}',
         [switch]$GeneratedFile,
         [switch]$IntegrityEvidence,
-        [switch]$UseBaseWorkflow
+        [switch]$UseBaseWorkflow,
+        [switch]$VendorIntegrityEvidence
     )
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("kinotch-shape-test-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
@@ -196,6 +197,10 @@ function Invoke-KntShapeMigrateFixture {
         if ($IntegrityEvidence) {
             New-Item -ItemType Directory -Path (Join-Path $tempRoot "scripts") -Force | Out-Null
             Set-Content -LiteralPath (Join-Path $tempRoot "scripts/integrity-check.ps1") -Value "Get-FileHash -Algorithm SHA256; stale check" -NoNewline
+        }
+        if ($VendorIntegrityEvidence) {
+            New-Item -ItemType Directory -Path (Join-Path $tempRoot "public/pdfjs/src/core") -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $tempRoot "public/pdfjs/src/core/calculate_sha256.js") -Value "function calculateSHA256() {}; stale reference" -NoNewline
         }
         $router = Join-Path $tempRoot ".kinotch/scripts/knt.ps1"
         $baseSource = Join-Path $RepoRoot ".kinotch"
@@ -583,6 +588,12 @@ Invoke-TestCase "shape probe distinguishes generated files from integrity checks
         Assert-True ($output -match "Candidate Default Pack 'generated-integrity': state OVERRIDE") "integrity evidence was not marked OVERRIDE"
     }
 }
+Invoke-TestCase "shape probe ignores vendored public integrity text" {
+    Invoke-KntShapeMigrateFixture -VendorIntegrityEvidence -AssertOutput {
+        param($root, $output)
+        Assert-True ($output -notmatch "Candidate Default Pack 'generated-integrity'") "vendored public integrity text was misclassified as Project generated-integrity"
+    }
+}
 Invoke-TestCase "shape probe does not treat Wrangler-only Web as API" {
     Invoke-KntShapeMigrateFixture -PackageJson '{"scripts":{"test":"node --test","build":"npm run build"},"devDependencies":{"wrangler":"latest"}}' -AssertOutput {
         param($root, $output)
@@ -868,6 +879,19 @@ Invoke-TestCase "verify fallback runs test then build" {
         Assert-Equal ("test" + [Environment]::NewLine + "build") ((Get-Content -Raw $marker).Trim()) "verify order"
     }
 }
+Invoke-TestCase "verify fallback propagates a failing project command" {
+    Invoke-KntFixture -Name "verify-fallback" -Command "verify" -ExpectedExit 9 -Prepare {
+        param($root)
+        $manifestPath = Join-Path $root "project/project.json"
+        $manifest = Get-Content -Raw -Encoding UTF8 $manifestPath | ConvertFrom-Json
+        $manifest.commands.build.run = if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+            "& pwsh -NoProfile -Command 'exit 9'"
+        } else {
+            "& powershell -NoProfile -Command 'exit 9'"
+        }
+        [IO.File]::WriteAllText($manifestPath, (ConvertTo-Json $manifest -Depth 20) + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+    }
+}
 Invoke-TestCase "command runs in declared cwd" {
     Invoke-KntFixture -Name "command-cwd" -Command "test" -ExpectedExit 0 -AssertOutput {
         param($root, $output)
@@ -920,7 +944,7 @@ Invoke-TestCase "Base documentation and profile status are finalized" {
     Assert-True ($runtime -match "ActionRequest") "Runtime candidate-contract content is missing"
     Assert-True ($workflow -match "knt\.ps1 setup") "Base CI setup step is missing"
     Assert-Equal 0 @($surfaceRegistry.surfaces.PSObject.Properties).Count "Base Surface Registry should be empty"
-    Assert-Equal "0.3.5" $baseVersion "Base version"
+    Assert-Equal "0.3.7" $baseVersion "Base version"
     Assert-True (@($catalog.defaults | Where-Object { $_.kind -eq "surface" }).Count -ge 8) "Surface Default catalog entries are incomplete"
     Assert-Equal 4 @($catalog.defaults | Where-Object { $_.kind -eq "tool" }).Count "Active Tool Default catalog count"
     foreach ($profileFile in Get-ChildItem (Join-Path $RepoRoot ".kinotch/profiles") -File) {

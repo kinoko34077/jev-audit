@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "packs": {
+    "cli": {
+      "state": "OVERRIDE"
+    },
+    "mcp": {
+      "state": "OVERRIDE"
+    },
+    "ci-test": {
+      "state": "OVERRIDE"
+    },
+    "generated-integrity": {
+      "state": "OVERRIDE"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "jev-audit",
+    "type": "python-cli-mcp",
+    "description": "Fast probabilistic directory auditing with CLI, MCP, and an optional Runtime bridge."
+  },
+  "profile": "cli",
+  "profiles": [
+    "cli",
+    "mcp"
+  ],
+  "runtime": {
+    "modules": []
+  },
+  "surfaces": {
+    "cli": true,
+    "gui_windows": false,
+    "web": false,
+    "api": false,
+    "mcp": true,
+    "agent": false,
+    "library": false
+  },
+  "commands": {
+    "setup": {
+      "exec": "python",
+      "args": ["-m", "pip", "install", "-e", "."],
+      "cwd": ".",
+      "forward_args": false
+    },
+    "dev": "",
+    "test": {
+      "exec": "python",
+      "args": ["-m", "unittest", "discover", "-s", "tests", "-v"],
+      "cwd": ".",
+      "forward_args": false
+    },
+    "build": "",
+    "verify": "",
+    "smoke": "",
+    "deploy": ""
+  },
+  "paths": {
+    "docs": "../docs/",
+    "source": "../jev_audit/",
+    "tests": "../tests/",
+    "actions": "contracts/actions.json",
+    "surfaces": "contracts/surfaces.json",
+    "defaults": "defaults.json"
+  },
+  "notes": [
+    "This first adoption adds the KiNoTch Base and Project Overlay without moving jev-audit Domain files.",
+    "The optional kinotch-runtime dependency remains Project-controlled and is not enabled by the Base profile.",
+    "CLI and MCP implementations remain authoritative Project boundaries."
+  ]
+}

@@ -1,0 +1,9 @@
+# Project-local additions preserved from the pre-adoption repository.
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+.coverage
+htmlcov/
+*.egg-info/
+.audit/
+*.audit.json

@@ -28,6 +28,7 @@ _PROVIDER_ERROR_CODES = {
     "TypeSafeInternalServerError": "PROVIDER_INTERNAL",
     "TypeSafeAPIResponseValidationError": "PROVIDER_RESPONSE_INVALID",
     "TypeSafeAPIError": "PROVIDER_API",
+    "TypeSafeError": "PROVIDER_CONFIG",
 }
 
 

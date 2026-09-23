@@ -21,6 +21,17 @@ class BatchingTests(unittest.TestCase):
         self.assertEqual(flattened, [f"f{i}.txt" for i in range(5)])
         self.assertGreater(len(batches), 1)
 
+    def test_single_item_cannot_exceed_batch_limit(self):
+        item = FileSnapshot(
+            path="large.py",
+            content="x" * 100,
+            chars=100,
+            original_chars=100,
+            truncated=False,
+        )
+        with self.assertRaisesRegex(ValueError, "exceeds max_chars"):
+            make_batches((item,), max_chars=100)
+
 
 if __name__ == "__main__":
     unittest.main()

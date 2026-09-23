@@ -72,6 +72,62 @@ class AuditorTests(unittest.TestCase):
         self.assertEqual(report.batches, 0)
         self.assertEqual(report.git["deleted_paths"], ("deleted.py",))
 
+    def test_clean_changed_only_returns_clear_noop_without_calling_jev(self):
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=(),
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": True, "deleted_paths": ()},
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor._audit_one"
+        ) as audit_one:
+            report = audit_directory(".", changed_only=True)
+
+        self.assertEqual(report.status, "clear")
+        self.assertEqual(report.files_scanned, 0)
+        self.assertEqual(report.batches, 0)
+        audit_one.assert_not_called()
+
+    def test_changed_only_with_only_skipped_files_is_not_a_clean_noop(self):
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=(),
+            skipped_counts={"sensitive": 1},
+            skipped_sensitive_paths=(".env",),
+            git={"is_git_repo": True, "deleted_paths": ()},
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan):
+            with self.assertRaisesRegex(RuntimeError, "No auditable text files"):
+                audit_directory(".", changed_only=True)
+
+    def test_model_is_forwarded_to_each_batch(self):
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=(
+                FileSnapshot(
+                    path="a.py", content="x=1", chars=3, original_chars=3, truncated=False
+                ),
+            ),
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": False, "deleted_paths": ()},
+        )
+        fake_result = JevResult(
+            model="jev-1.13.0",
+            elapsed_ms=1.0,
+            usage={"input_tokens": 1, "output_tokens": 1},
+            choices={"local_status": {"probabilities": {"clear": 1.0}}},
+            nouls={"concrete_issue": 0.0, "spec_mismatch": 0.0, "regression_risk": 0.0},
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor.audit_with_jev", return_value=fake_result
+        ) as gateway:
+            audit_directory(".", workers=1, model="jev-custom")
+
+        self.assertEqual(gateway.call_args.kwargs["model"], "jev-custom")
+
 
 if __name__ == "__main__":
     unittest.main()

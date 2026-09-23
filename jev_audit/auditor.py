@@ -31,8 +31,9 @@ def _batch_state(batch: Batch) -> dict[str, Any]:
 def _audit_one(
     batch: Batch,
     profile: AuditProfile,
+    model: str | None,
 ) -> BatchAudit:
-    result = audit_with_jev(_batch_state(batch), profile)
+    result = audit_with_jev(_batch_state(batch), profile, model=model)
     return BatchAudit(
         index=batch.index,
         paths=tuple(batch.paths),
@@ -50,6 +51,7 @@ def audit_directory(
     max_file_bytes: int = 2_000_000,
     batch_chars: int = 32_000,
     workers: int = 4,
+    model: str | None = None,
 ) -> AuditReport:
     if max_file_chars <= 0:
         raise ValueError("max_file_chars must be > 0")
@@ -72,7 +74,23 @@ def audit_directory(
     )
 
     if not scan.files and not scan.git.get("deleted_paths"):
-        raise RuntimeError("No auditable text files found after exclusions")
+        has_skipped_changes = bool(scan.skipped_counts or scan.skipped_sensitive_paths)
+        if not changed_only or has_skipped_changes:
+            raise RuntimeError("No auditable text files found after exclusions")
+        aggregate = aggregate_batches(())
+        aggregate["overall"]["status"] = "clear"
+        aggregate["wall_clock_ms"] = (time.perf_counter() - started) * 1000.0
+        return AuditReport(
+            root=scan.root,
+            profile=profile_obj.name,
+            files_scanned=0,
+            batches=0,
+            skipped_counts=scan.skipped_counts,
+            skipped_sensitive_paths=scan.skipped_sensitive_paths,
+            git=scan.git,
+            batch_audits=(),
+            aggregate=aggregate,
+        )
 
     batches = make_batches(scan.files, batch_chars)
     workers = max(1, min(workers, max(1, len(batches))))
@@ -80,7 +98,7 @@ def audit_directory(
     audits: list[BatchAudit] = []
     if workers == 1:
         audits = [
-            _audit_one(batch, profile_obj)
+            _audit_one(batch, profile_obj, model)
             for batch in batches
         ]
     else:
@@ -90,6 +108,7 @@ def audit_directory(
                     _audit_one,
                     batch,
                     profile_obj,
+                    model,
                 ): batch.index
                 for batch in batches
             }

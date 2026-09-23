@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -23,6 +24,17 @@ LOCAL_NOULS = {
         "回帰テスト結果が見えないという理由だけではYesにしないでください。"
     ),
 }
+
+DEFAULT_JEV_MODEL = "jev-1.13.0"
+
+
+def _resolve_model(model: str | None) -> str:
+    """Resolve an explicit model, then the SDK override, then the pinned default."""
+    explicit = (model or "").strip()
+    if explicit:
+        return explicit
+    configured = os.getenv("TYPESAFE_DEFAULT_MODEL", "").strip()
+    return configured or DEFAULT_JEV_MODEL
 
 
 def _sdk():
@@ -95,12 +107,21 @@ def _serialize_response(response: Any, elapsed_ms: float) -> JevResult:
     )
 
 
-def audit_with_jev(state: dict[str, Any], profile: AuditProfile) -> JevResult:
+def audit_with_jev(
+    state: dict[str, Any],
+    profile: AuditProfile,
+    *,
+    model: str | None = None,
+) -> JevResult:
     _, _, TypeSafeClient = _sdk()
     questions = _build_questions(profile)
 
     started = time.perf_counter()
     with TypeSafeClient() as client:
-        response = client.system_one(state=state, questions=questions)
+        response = client.system_one(
+            state=state,
+            questions=questions,
+            model=_resolve_model(model),
+        )
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     return _serialize_response(response, elapsed_ms)

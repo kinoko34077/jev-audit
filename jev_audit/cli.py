@@ -23,6 +23,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-file-bytes", type=int, default=2_000_000)
     parser.add_argument("--batch-chars", type=int, default=32_000)
     parser.add_argument("--workers", type=int, default=4, help="parallel Jev batch requests")
+    parser.add_argument(
+        "--model",
+        help="Jev model name (default: pinned jev-1.13.0; TYPESAFE_DEFAULT_MODEL overrides it)",
+    )
     parser.add_argument("--json", action="store_true", help="print JSON only")
     parser.add_argument("--save", type=Path, help="save full report JSON")
     parser.add_argument(
@@ -66,13 +70,18 @@ def main(argv: list[str] | None = None) -> int:
             max_file_bytes=args.max_file_bytes,
             batch_chars=args.batch_chars,
             workers=args.workers,
+            model=args.model,
         )
     except Exception as exc:
         print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
 
     if args.save:
-        write_json(report, args.save)
+        try:
+            write_json(report, args.save)
+        except Exception as exc:
+            print(f"ERROR: could not save report: {exc}", file=sys.stderr)
+            return 2
 
     if args.json:
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))

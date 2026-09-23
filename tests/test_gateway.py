@@ -19,6 +19,49 @@ class FakeNoul:
 
 
 class GatewayTests(unittest.TestCase):
+    def test_model_resolution_is_pinned_and_explicitly_overridable(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(jev_gateway._resolve_model(None), "jev-1.13.0")
+        with patch.dict("os.environ", {"TYPESAFE_DEFAULT_MODEL": "jev-1.14.0"}, clear=True):
+            self.assertEqual(jev_gateway._resolve_model(None), "jev-1.14.0")
+        self.assertEqual(jev_gateway._resolve_model("jev-custom"), "jev-custom")
+
+    def test_audit_with_jev_passes_resolved_model_to_sdk(self):
+        captured = {}
+
+        class FakeClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def system_one(self, **kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(
+                    choices={
+                        "local_status": SimpleNamespace(
+                            choice="clear",
+                            confidence=1.0,
+                            probabilities={"clear": 1.0},
+                        )
+                    },
+                    nouls={
+                        "concrete_issue": SimpleNamespace(noul=0.0),
+                        "spec_mismatch": SimpleNamespace(noul=0.0),
+                        "regression_risk": SimpleNamespace(noul=0.0),
+                    },
+                    usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                    model="jev-1.13.0",
+                )
+
+        with patch.object(jev_gateway, "_sdk", return_value=(None, None, FakeClient)), patch.object(
+            jev_gateway, "_build_questions", return_value={}
+        ), patch.dict("os.environ", {}, clear=True):
+            jev_gateway.audit_with_jev({}, object())
+
+        self.assertEqual(captured["model"], "jev-1.13.0")
+
     def test_questions_are_minimal_and_rules_feed_local_status(self):
         profile = AuditProfile(
             name="test",

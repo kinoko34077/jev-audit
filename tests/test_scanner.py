@@ -26,6 +26,18 @@ class ScannerTests(unittest.TestCase):
             self.assertIn(".env", result.skipped_sensitive_paths)
             self.assertIn("private.pem", result.skipped_sensitive_paths)
 
+    def test_audit_directory_is_ignored_as_generated_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / ".audit").mkdir()
+            (root / ".audit" / "result.json").write_text("{}", encoding="utf-8")
+            (root / "main.py").write_text("print('ok')", encoding="utf-8")
+
+            result = scan_directory(root, ScanOptions())
+            paths = {item.path for item in result.files}
+            self.assertIn("main.py", paths)
+            self.assertNotIn(".audit/result.json", paths)
+
     def test_missing_git_falls_back_to_directory_scan(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

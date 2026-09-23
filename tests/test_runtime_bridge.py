@@ -152,6 +152,22 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(429, raised.exception.error.details["status"])
         self.assertEqual("req-test", raised.exception.error.details["request_id"])
 
+    def test_runtime_preserves_typesafe_configuration_error(self):
+        fake_runtime = _runtime()
+
+        class TypeSafeError(Exception):
+            pass
+
+        error = TypeSafeError("invalid API key format")
+        with patch.object(runtime_bridge, "_load_runtime", return_value=fake_runtime), patch.object(
+            runtime_bridge, "_legacy_audit", side_effect=error
+        ):
+            with self.assertRaises(runtime_bridge.RuntimeAuditError) as raised:
+                runtime_bridge.run_audit(Path("repo"))
+
+        self.assertEqual("PROVIDER_CONFIG", raised.exception.error.code)
+        self.assertEqual(str(error), raised.exception.error.message)
+
     def test_runtime_redacts_unknown_exception_via_runtime_kernel(self):
         fake_runtime = _runtime()
         error = RuntimeError("secret internal implementation detail")

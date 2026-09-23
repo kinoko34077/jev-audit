@@ -32,6 +32,7 @@ IGNORED_DIRS = {
     ".nox",
     ".idea",
     ".vs",
+    ".audit",
 }
 
 KNOWN_LOCK_FILES = {

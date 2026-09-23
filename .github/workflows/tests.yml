@@ -49,5 +49,34 @@ jobs:
       - name: Import optional integrations
         run: python -c "import kinotch_runtime, mcp, typesafe_sdk; print('optional imports ok')"
 
+      - name: Import real MCP server module
+        run: python -c "import jev_audit.mcp_server; print('MCP server import ok')"
+
       - name: Run test suite with optional integrations
         run: python -m unittest discover -s tests -v
+
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Run PowerShell setup
+        shell: pwsh
+        run: .\setup.ps1
+
+      - name: Smoke test CLI launcher
+        shell: pwsh
+        run: .\audit.ps1 --list-profiles
+
+      - name: Smoke test MCP import and suite
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\python.exe -c "import jev_audit.mcp_server; print('MCP server import ok')"
+          .\.venv\Scripts\python.exe -m unittest discover -s tests -v

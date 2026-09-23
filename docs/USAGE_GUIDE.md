@@ -99,6 +99,8 @@ jev-audit . --changed-only
 
 `--changed-only`はGitのHEADとの差分と、除外されていない未追跡ファイルを対象にします。削除済みファイルはパスを検出しますが、削除前の内容は監査できません。
 
+変更がないcleanなrepositoryではno-opの`clear`レポートを返します。Jev requestは発行せず、CLIのexit codeは0です。
+
 HEADがまだない新規repositoryでは、現在の追跡対象と除外されていない未追跡ファイルを候補にするfallbackがあります。この場合、通常の差分監査より広い範囲が選ばれることがあります。
 
 対象を変更範囲に絞れるため、通常はfull scanよりinput tokenや無関係なnoiseを抑えられます。また、今回一緒に変更した仕様・実装・test・設定を同じ対象集合に含めやすく、変更箇所に関連するcontextへ判断を集中しやすくなります。ただし、それらが同じbatchに入る保証はありません。
@@ -193,10 +195,12 @@ Tests: tests/auth/
 | --- | ---: | --- |
 | `max_file_chars` | 12,000 | 1ファイルから送る最大文字数 |
 | `max_file_bytes` | 2,000,000 | これを超えるファイルをskip |
-| `batch_chars` | 32,000 | batch分割に使う文字数の目安 |
+| `batch_chars` | 32,000 | batch分割の上限。各fileの文字数・path・固定overheadを収容できない値は拒否 |
 | `workers` | 4 | 並列Jev request数の上限 |
 
-batch分割は文字数を基準にしたもので、token数や意味上のまとまりではありません。仕様と実装が別batchになれば、直接比較できないことがあります。1ファイルはbatch分割時にさらに分割されず、設定したbatch文字数より大きい1ファイルを含むとbatchが上限を超える場合があります。必要なファイル同士を近くに配置し、変更範囲やfocused scanを活用してください。
+batch分割は文字数を基準にしたもので、token数や意味上のまとまりではありません。仕様と実装が別batchになれば、直接比較できないことがあります。1ファイルはbatch分割時にさらに分割されないため、pathと固定overheadを含むsingle-item costが`batch_chars`を超える設定は拒否されます。必要なファイル同士を近くに配置し、変更範囲やfocused scanを活用してください。
+
+Jev modelの既定値は`jev-1.13.0`です。`TYPESAFE_DEFAULT_MODEL`またはCLIの`--model`で明示的に上書きできます。既定値を更新する場合は、判定閾値との組み合わせを再評価してください。
 
 既定の12,000文字を超えるテキストは、中央部分を省き、先頭と末尾にtruncation markerを挟んで送られます。省略された部分にだけ問題がある場合は見逃す可能性があります。既定の2,000,000 bytesを超えるファイルは`too_large`としてskipされます。
 
@@ -241,6 +245,8 @@ scannerは次の名前・拡張子のファイルを既定で除外します。
 - `.env`、`.env.*`、`.envrc`、`.npmrc`、`.pypirc`、`.netrc`
 - `credentials.json`、`secrets.json`、`id_rsa`、`id_ed25519`
 - `*.key`、`*.pem`、`*.p12`、`*.pfx`、`*.jks`、`*.keystore`
+
+生成レポート用の`.audit/` directoryも既定で除外されます。
 
 この仕組みはファイル名・拡張子による除外で、完全なDLPではありません。例えば`config.py`や通常のJSON・ソースファイルに直接書かれたAPI keyは監査対象になり得ます。`.gitignore`等の標準除外規則が未追跡ファイルの候補除外に使われるのも、Git repository rootでの走査時に限られます。追跡済みファイルは`.gitignore`に追加しただけでは候補から外れません。
 

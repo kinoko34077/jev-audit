@@ -21,6 +21,9 @@ TypeSafe AI **Jev** を使って、現在のディレクトリや任意のリポ
 - 環境変数 `TYPESAFE_API_KEY` を設定済み
 - Gitは任意（`--changed-only`使用時のみ必要）
 
+Jev modelは既定で`jev-1.13.0`に固定しています。更新時は
+`TYPESAFE_DEFAULT_MODEL`またはCLIの`--model`で明示し、評価後に既定値を更新してください。
+
 PowerShell:
 
 ```powershell
@@ -51,8 +54,10 @@ jev-audit . --changed-only
 JSON保存:
 
 ```powershell
-jev-audit . --save audit-result.json
+jev-audit . --save .audit/audit-result.json
 ```
+
+`.audit/`は生成レポート用の除外directoryです。保存先の親directoryは自動作成されます。
 
 標準出力もJSONだけ:
 
@@ -142,7 +147,7 @@ jev-audit . --profile C:\rules\my-audit.json
 - `id_rsa`, `id_ed25519`
 - `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
 
-対象path自体がGit repository rootで、Gitが利用可能な場合はGitから候補を列挙し、未追跡ファイルには `.gitignore` 等の標準除外規則を適用します。Git未導入環境やrepository内のsubdirectoryを対象にしたfull scanでは通常のdirectory走査になり、`.gitignore`は適用されません。`--changed-only`はGit repository rootでのみ使えます。
+対象path自体がGit repository rootで、Gitが利用可能な場合はGitから候補を列挙し、未追跡ファイルには `.gitignore` 等の標準除外規則を適用します。Git未導入環境やrepository内のsubdirectoryを対象にしたfull scanでは通常のdirectory走査になり、`.gitignore`は適用されません。`--changed-only`はGit repository rootでのみ使えます。変更がないcleanなrepositoryではno-opの`clear`を返し、exit 0になります。
 
 これはファイル名・拡張子等による除外で、完全なDLPではありません。ソース内に直接書かれた鍵や機密情報は監査対象になり得ます。外部APIへの送信が認められている範囲で利用してください。詳しくは[利用ガイドのセキュリティ節](docs/USAGE_GUIDE.md)を参照してください。
 

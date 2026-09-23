@@ -57,6 +57,7 @@ def _server():
         max_file_bytes: int = 2_000_000,
         batch_chars: int = 32_000,
         workers: int = 4,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Audit a directory with Jev.
 
@@ -73,6 +74,7 @@ def _server():
             max_file_bytes=max_file_bytes,
             batch_chars=batch_chars,
             workers=workers,
+            model=model,
         ).to_dict()
 
     @mcp.tool()

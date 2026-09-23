@@ -11,16 +11,17 @@ Status: evaluation complete; Runtime remains optional and provisional
   Core directly; installing an extra is not itself the switching condition.
 - When the pinned `kinotch-runtime` package is importable, the bridge registers
   and executes `repo.audit` through the Runtime `ActionRegistry`.
-- The Audit Core, scanner, batching, gateway, aggregation, and existing MCP
-  path resolution were not changed.
+- The Runtime Pilot remains a boundary around the shared Audit Core; current
+  scanner, batching, reporting, and MCP fixes are used by both direct and
+  Runtime paths.
 
 ## Evidence
 
 - The original Pilot evidence below is retained as a historical record from
   before the error-bridge hardening; it is not a current CI claim.
-- Current local core suite: 43 tests ran with one optional Runtime integration
+- Current local core suite: 52 tests ran with one optional Runtime integration
   test skipped when the Pilot extra is absent.
-- Current local optional-integration suite: 43 tests passed with
+- Current local optional-integration suite: 52 tests passed with
   `kinotch-runtime`, `mcp`, and `typesafe-sdk` installed; the actual Runtime
   kernel integration test executed.
 - Current bridge tests cover known provider error preservation and unknown
@@ -36,8 +37,8 @@ Status: evaluation complete; Runtime remains optional and provisional
 
 ### What worked
 
-- Audit Core, scanner, batching, gateway, aggregation, and MCP path resolution
-  remained unchanged.
+- Direct CLI and Runtime CLI/MCP continue to use the same current Audit Core,
+  scanner, batching, gateway, aggregation, and MCP path resolution.
 - CLI and MCP use the same localized bridge, while the default installation
   keeps the direct legacy path.
 - Expected input, no-auditable-file, and known provider failures retain exit

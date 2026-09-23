@@ -911,7 +911,7 @@ Invoke-TestCase "Base documentation and profile status are finalized" {
     Assert-True ($runtime -match "ActionRequest") "Runtime candidate-contract content is missing"
     Assert-True ($workflow -match "knt\.ps1 setup") "Base CI setup step is missing"
     Assert-Equal 0 @($surfaceRegistry.surfaces.PSObject.Properties).Count "Base Surface Registry should be empty"
-    Assert-Equal "0.3.2" $baseVersion "Base version"
+    Assert-Equal "0.3.4" $baseVersion "Base version"
     Assert-True (@($catalog.defaults | Where-Object { $_.kind -eq "surface" }).Count -ge 8) "Surface Default catalog entries are incomplete"
     Assert-Equal 4 @($catalog.defaults | Where-Object { $_.kind -eq "tool" }).Count "Active Tool Default catalog count"
     foreach ($profileFile in Get-ChildItem (Join-Path $RepoRoot ".kinotch/profiles") -File) {

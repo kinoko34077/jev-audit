@@ -1,7 +1,0 @@
-typesafe-sdk<0.8,>=0.7
-
-[mcp]
-mcp<3,>=2
-
-[pilot]
-kinotch-runtime @ git+https://github.com/kinoko34077/kinotch-runtime.git@be5486efdca1f34b6ecafd19cf796ecd07e496ef

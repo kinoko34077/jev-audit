@@ -1,3 +1,0 @@
-[console_scripts]
-jev-audit = jev_audit.cli:main
-jev-audit-mcp = jev_audit.mcp_server:main

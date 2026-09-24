@@ -84,7 +84,7 @@
 
 ### Task 7: Commit, push, and external verification
 
-- [ ] Review the full diff against the user checklist and confirm forbidden thresholds/questions were not changed.
-- [ ] Commit and push `main`.
-- [ ] Confirm Python 3.10–3.14, optional integrations, Windows launcher, and Base Verify workflows succeed.
-- [ ] Record that no live Jev API smoke was run unless safe credentials are explicitly available.
+- [x] Review the full diff against the user checklist and confirm forbidden thresholds/questions were not changed.
+- [x] Commit and push `main`.
+- [x] Confirm Python 3.10–3.14, optional integrations, Windows launcher, and Base Verify workflows succeed.
+- [x] Record that no live Jev API smoke was run unless safe credentials are explicitly available.

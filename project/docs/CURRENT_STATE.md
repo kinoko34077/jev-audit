@@ -1,9 +1,9 @@
 # Current State
 
 Base version: `0.3.8`
-Project version: `0.2.11`
+Project version: `0.2.12`
 
-Last verified: 2026-09-24 — guardrail and changed-only scan finish
+Last verified: 2026-09-24 — Git diff subprocess boundary finish
 
 ## Implemented
 
@@ -24,6 +24,8 @@ Last verified: 2026-09-24 — guardrail and changed-only scan finish
   scanner snapshot accumulation stops early at file and content limits
 - Changed-only Git scans do not walk unrelated repository trees to collect
   excluded-directory metadata
+- Changed-only Git diff and diff-context commands disable both external diff
+  helpers and textconv programs
 - MCP custom profiles use the shared profile resolver, allowed-root boundary,
   and 256,000-byte size cap before profile contents are read
 - Runtime opt-in without an installed or compatible Pilot dependency returns an

@@ -211,6 +211,7 @@ def _git_change_by_path(root: Path, names: set[str]) -> dict[str, str]:
         root,
         "diff",
         "--no-ext-diff",
+        "--no-textconv",
         "--unified=80",
         "HEAD",
         "--",
@@ -283,7 +284,16 @@ def _git_candidates(
                 raise _git_failure("git ls-files", listed)
             names = set(_parse_git_nul_paths(listed.stdout))
         else:
-            changed = _run_git(root, "diff", "--name-only", "-z", "HEAD", "--")
+            changed = _run_git(
+                root,
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--name-only",
+                "-z",
+                "HEAD",
+                "--",
+            )
             if changed.returncode != 0:
                 raise _git_failure("git diff HEAD", changed)
             untracked = _run_git(root, "ls-files", "--others", "--exclude-standard", "-z")

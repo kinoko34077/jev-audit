@@ -1,6 +1,6 @@
 # jev-audit 利用ガイド
 
-このガイドは、`jev-audit v0.2.11`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
+このガイドは、`jev-audit v0.2.12`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
 
 ## 1. このツールの位置付け
 
@@ -105,7 +105,7 @@ jev-audit . --changed-only
 
 HEADがまだない新規repositoryでは、現在の追跡対象と除外されていない未追跡ファイルを候補にするfallbackがあります。この場合、通常の差分監査より広い範囲が選ばれることがあります。
 
-Git metadataが存在するのにroot判定や候補列挙へ失敗した場合は、安全のためdirectory walkへfallbackせずエラーになります。変更対象がsymlinkやsubmodule pointerだけの場合も、`skipped_paths_by_reason`へ残り、clear no-opではなく`unknown`になります。`.kinotch`、`.venv`、`node_modules`等のignored directoryは中のfileを列挙せず、`excluded_directories`へroot相対directoryとして記録します。
+Git metadataが存在するのにroot判定や候補列挙へ失敗した場合は、安全のためdirectory walkへfallbackせずエラーになります。変更対象がsymlinkやsubmodule pointerだけの場合も、`skipped_paths_by_reason`へ残り、clear no-opではなく`unknown`になります。`.kinotch`、`.venv`、`node_modules`等のignored directoryは中のfileを列挙せず、`excluded_directories`へroot相対directoryとして記録します。changed-onlyのGit diff取得では`--no-ext-diff --no-textconv`を指定し、repositoryやuser configの外部diff/textconv programを監査中に実行しません。
 
 対象を変更範囲に絞れるため、通常はfull scanよりinput tokenや無関係なnoiseを抑えられます。また、今回一緒に変更した仕様・実装・test・設定を同じ対象集合に含めやすく、変更箇所に関連するcontextへ判断を集中しやすくなります。ただし、それらが同じbatchに入る保証はありません。
 

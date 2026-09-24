@@ -147,7 +147,9 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
                 if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123 refs/heads/main\n", stderr="")
-                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                if args == (
+                    "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD", "--"
+                ):
                     return subprocess.CompletedProcess(
                         args,
                         128,
@@ -203,7 +205,9 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
                 if args == ("rev-parse", "--verify", "HEAD"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
-                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                if args == (
+                    "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD", "--"
+                ):
                     return subprocess.CompletedProcess(args, 0, stdout="vendor-submodule\0", stderr="")
                 if args == ("ls-files", "--others", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
@@ -242,7 +246,9 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
                 if args == ("rev-parse", "--verify", "HEAD"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
-                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                if args == (
+                    "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD", "--"
+                ):
                     return subprocess.CompletedProcess(args, 0, stdout="link.txt\0", stderr="")
                 if args == ("ls-files", "--others", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
@@ -269,13 +275,17 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
                 if args == ("rev-parse", "--verify", "HEAD"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
-                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                if args == (
+                    "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD", "--"
+                ):
                     return subprocess.CompletedProcess(args, 0, stdout="changed.py\0", stderr="")
                 if args == ("ls-files", "--others", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
                 if args == ("ls-files", "--stage", "-z", "--", "changed.py"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-                if args == ("diff", "--no-ext-diff", "--unified=80", "HEAD", "--", "changed.py"):
+                if args == (
+                    "diff", "--no-ext-diff", "--no-textconv", "--unified=80", "HEAD", "--", "changed.py"
+                ):
                     return subprocess.CompletedProcess(
                         args,
                         0,
@@ -306,13 +316,17 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
                 if args == ("rev-parse", "--verify", "HEAD"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
-                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                if args == (
+                    "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD", "--"
+                ):
                     return subprocess.CompletedProcess(args, 0, stdout=name + "\0", stderr="")
                 if args == ("ls-files", "--others", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
                 if args == ("ls-files", "--stage", "-z", "--", name):
                     return subprocess.CompletedProcess(args, 0, stdout="100644 abc 0\t" + name + "\0", stderr="")
-                if args == ("diff", "--no-ext-diff", "--unified=80", "HEAD", "--", name):
+                if args == (
+                    "diff", "--no-ext-diff", "--no-textconv", "--unified=80", "HEAD", "--", name
+                ):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
                 raise AssertionError(f"unexpected git command: {args}")
 

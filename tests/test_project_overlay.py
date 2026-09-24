@@ -37,8 +37,8 @@ class ProjectOverlayTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
         package = (root / "jev_audit" / "__init__.py").read_text(encoding="utf-8")
-        self.assertIn('version = "0.2.11"', pyproject)
-        self.assertIn('__version__ = "0.2.11"', package)
+        self.assertIn('version = "0.2.12"', pyproject)
+        self.assertIn('__version__ = "0.2.12"', package)
 
     def test_runtime_docs_require_installation_and_explicit_opt_in(self):
         root = Path(__file__).parents[1]

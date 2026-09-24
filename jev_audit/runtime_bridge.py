@@ -124,8 +124,9 @@ def run_audit(path: str | Path = ".", **options: Any) -> Any:
     """Run the existing Audit Core, optionally through the Runtime kernel.
 
     The Runtime dependency is intentionally optional. A normal jev-audit
-    installation follows the unchanged legacy path. The Pilot extra enables
-    the shared ``repo.audit`` Action boundary used by both CLI and MCP.
+    installation follows the unchanged legacy path. Installing the pinned Pilot
+    requirements and setting the explicit opt-in enables the shared
+    ``repo.audit`` Action boundary used by both CLI and MCP.
     """
     runtime = _load_runtime()
     if runtime is None:

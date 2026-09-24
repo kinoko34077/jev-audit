@@ -52,7 +52,7 @@
   "notes": [
     "This first adoption adds the KiNoTch Base and Project Overlay without moving jev-audit Domain files.",
     "Paths declared under paths.source, paths.tests, and paths.docs are Project-owned legacy paths and are editable during adoption; .kinotch and AGENTS.md remain common Base files.",
-    "The optional kinotch-runtime dependency remains Project-controlled and is not enabled by the Base profile.",
+    "The optional kinotch-runtime dependency remains Project-controlled, is installed from requirements-pilot.txt, and is not enabled by the Base profile.",
     "CLI and MCP implementations remain authoritative Project boundaries."
   ]
 }

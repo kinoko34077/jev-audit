@@ -11,8 +11,8 @@
 **Spec:** Current audit findings supplied in the task; project behavior and ownership are recorded in `project/docs/SPEC.md` and `project/docs/CURRENT_STATE.md`.
 
 This pass also closes the related Runtime auto-enable and clean CLI no-op API-key
-findings. Cost totals, launcher encoding, PyPI packaging, and diff-aware
-regression scoring remain separately documented follow-up work.
+findings. Remaining hardening is tracked in the follow-up plan for total-work
+guardrails, packaging, launcher encoding, token accounting, and diff context.
 
 ## Global Constraints
 
@@ -94,7 +94,7 @@ regression scoring remain separately documented follow-up work.
 **Files:**
 - Modify: `README.md`, `docs/USAGE_GUIDE.md`, `project/docs/SPEC.md`
 
-- [x] Document DEBUG body logging, MCP allowed-root behavior, response validation, and the known regression-risk diff limitation.
+- [x] Document DEBUG body logging, MCP allowed-root behavior, response validation, and the bounded regression-risk diff context.
 - [x] Confirm documentation matches the implemented defaults and run `git diff --check`.
 
 ## Verification Gate
@@ -104,4 +104,4 @@ regression scoring remain separately documented follow-up work.
 - [x] `.\.kinotch\scripts\knt.ps1 doctor`
 - [x] `.\.kinotch\scripts\knt.ps1 base-check`
 - [x] `.\.kinotch\scripts\knt.ps1 verify`
-- [ ] Commit, push, and confirm the latest GitHub Actions workflows for the pushed SHA.
+- [x] Commit, push, and confirm the latest GitHub Actions workflows for the pushed SHA.

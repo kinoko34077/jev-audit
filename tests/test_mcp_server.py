@@ -96,6 +96,14 @@ class MCPPathResolutionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "allowed root"):
                     self.mod._resolve_audit_path(outside)
 
+    def test_rejects_custom_profile_outside_allowed_root(self):
+        with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
+            profile = Path(outside) / "custom.json"
+            profile.write_text("{}", encoding="utf-8")
+            with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": allowed}, clear=False):
+                with self.assertRaisesRegex(ValueError, "Custom profile"):
+                    self.mod._resolve_profile(str(profile))
+
     def test_explicit_any_path_opt_out_is_required_for_outside_root(self):
         with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
             with patch.dict(
@@ -113,6 +121,12 @@ class MCPPathResolutionTests(unittest.TestCase):
                     tool(path=root, max_file_chars=self.mod.MCP_MAX_FILE_CHARS + 1)
                 with self.assertRaisesRegex(ValueError, "workers"):
                     tool(path=root, workers=self.mod.MCP_MAX_WORKERS + 1)
+                with self.assertRaisesRegex(ValueError, "max_total_chars"):
+                    tool(path=root, max_total_chars=self.mod.MCP_MAX_TOTAL_CHARS + 1)
+                with self.assertRaisesRegex(ValueError, "max_batches"):
+                    tool(path=root, max_batches=self.mod.MCP_MAX_BATCHES + 1)
+                with self.assertRaisesRegex(ValueError, "max_files"):
+                    tool(path=root, max_files=self.mod.MCP_MAX_FILES + 1)
 
     def test_server_instructions_tell_client_to_pass_workspace(self):
         instructions = self.mod.mcp.kwargs.get("instructions", "")

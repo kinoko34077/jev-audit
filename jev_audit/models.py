@@ -28,6 +28,7 @@ class FileSnapshot:
     chars: int
     original_chars: int
     truncated: bool
+    change: str = ""
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,7 @@ class Batch:
 
     @property
     def chars(self) -> int:
-        return sum(item.chars for item in self.files)
+        return sum(item.chars + len(item.change) for item in self.files)
 
     @property
     def paths(self) -> list[str]:

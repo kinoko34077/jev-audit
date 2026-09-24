@@ -12,6 +12,9 @@ MCP_MAX_FILE_CHARS = 100_000
 MCP_MAX_FILE_BYTES = 10_000_000
 MCP_MAX_BATCH_CHARS = 500_000
 MCP_MAX_WORKERS = 16
+MCP_MAX_FILES = 5_000
+MCP_MAX_TOTAL_CHARS = 2_000_000
+MCP_MAX_BATCHES = 500
 
 
 def _allow_any_path() -> bool:
@@ -62,20 +65,43 @@ def _resolve_audit_path(path: str | None) -> Path:
     return resolved
 
 
+def _resolve_profile(profile: str) -> str:
+    """Keep MCP custom profile reads inside the same trust boundary."""
+    if not isinstance(profile, str) or not profile.strip():
+        raise ValueError("MCP profile must be a bundled name or JSON path")
+    if profile in available_profiles() or _allow_any_path():
+        return profile
+    candidate = Path(profile).expanduser().resolve()
+    allowed_root = _allowed_root()
+    try:
+        candidate.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"Custom profile is outside the MCP allowed root {allowed_root}: {candidate}"
+        ) from exc
+    return str(candidate)
+
+
 def _validate_mcp_limits(
     max_file_chars: int,
     max_file_bytes: int,
     batch_chars: int,
     workers: int,
+    max_files: int,
+    max_total_chars: int,
+    max_batches: int,
 ) -> None:
     limits = {
         "max_file_chars": (max_file_chars, 1, MCP_MAX_FILE_CHARS),
         "max_file_bytes": (max_file_bytes, 1, MCP_MAX_FILE_BYTES),
         "batch_chars": (batch_chars, 1, MCP_MAX_BATCH_CHARS),
         "workers": (workers, 1, MCP_MAX_WORKERS),
+        "max_files": (max_files, 1, MCP_MAX_FILES),
+        "max_total_chars": (max_total_chars, 1, MCP_MAX_TOTAL_CHARS),
+        "max_batches": (max_batches, 1, MCP_MAX_BATCHES),
     }
     for name, (value, lower, upper) in limits.items():
-        if not isinstance(value, int) or not lower <= value <= upper:
+        if type(value) is not int or not lower <= value <= upper:
             raise ValueError(f"MCP {name} must be between {lower} and {upper}")
 
 
@@ -95,7 +121,8 @@ def _server():
             "because CLAUDE_PROJECT_DIR is provided automatically; otherwise the server "
             "falls back to its process working directory. Paths must be under "
             "JEV_AUDIT_ALLOWED_ROOT (or the resolved project root) unless the explicit "
-            "JEV_AUDIT_ALLOW_ANY_PATH=1 opt-out is configured."
+            "JEV_AUDIT_ALLOW_ANY_PATH=1 opt-out is configured; custom profile paths "
+            "follow the same boundary."
         ),
     )
 
@@ -109,6 +136,9 @@ def _server():
         batch_chars: int = 32_000,
         workers: int = 4,
         model: str | None = None,
+        max_files: int = MCP_MAX_FILES,
+        max_total_chars: int = MCP_MAX_TOTAL_CHARS,
+        max_batches: int = MCP_MAX_BATCHES,
     ) -> dict[str, Any]:
         """Audit a directory with Jev.
 
@@ -117,7 +147,16 @@ def _server():
         the MCP server process working directory.
         """
         target = _resolve_audit_path(path)
-        _validate_mcp_limits(max_file_chars, max_file_bytes, batch_chars, workers)
+        profile = _resolve_profile(profile)
+        _validate_mcp_limits(
+            max_file_chars,
+            max_file_bytes,
+            batch_chars,
+            workers,
+            max_files,
+            max_total_chars,
+            max_batches,
+        )
         return run_audit(
             target,
             profile=profile,
@@ -127,6 +166,9 @@ def _server():
             batch_chars=batch_chars,
             workers=workers,
             model=model,
+            max_files=max_files,
+            max_total_chars=max_total_chars,
+            max_batches=max_batches,
         ).to_dict()
 
     @mcp.tool()

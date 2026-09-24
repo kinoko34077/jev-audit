@@ -19,7 +19,7 @@ def make_batches(files: tuple[FileSnapshot, ...], max_chars: int) -> tuple[Batch
             current_chars = 0
 
     for item in files:
-        cost = item.chars + len(item.path) + 32
+        cost = item.chars + len(item.change) + len(item.path) + 32
         if cost > max_chars:
             raise ValueError(
                 f"file {item.path!r} exceeds max_chars ({cost} > {max_chars})"

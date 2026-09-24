@@ -39,6 +39,23 @@ def result(
 
 
 class AggregateTests(unittest.TestCase):
+    def test_missing_token_usage_remains_unreported(self):
+        batch = BatchAudit(
+            index=1,
+            paths=("a.py",),
+            chars=10,
+            result=JevResult(
+                model="jev-test",
+                elapsed_ms=10.0,
+                usage={"input_tokens": None, "output_tokens": 10},
+                choices=result().choices,
+                nouls=result().nouls,
+            ),
+        )
+        aggregate = aggregate_batches((batch,))
+        self.assertIsNone(aggregate["usage"]["input_tokens"])
+        self.assertEqual(aggregate["usage"]["output_tokens"], 10)
+
     def test_concrete_issue_and_rework_can_raise_red(self):
         batch = BatchAudit(index=1, paths=("a.py",), chars=10, result=result(concrete=0.91, rework=0.81))
         aggregate = aggregate_batches((batch,))

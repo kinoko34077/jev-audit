@@ -216,6 +216,42 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(result.skipped_counts.get("symlink_change"), 1)
         self.assertEqual(result.skipped_paths_by_reason["symlink_change"], ("link.txt",))
 
+    def test_changed_regular_file_keeps_bounded_diff_context(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / "changed.py"
+            target.write_text("x=1\n", encoding="utf-8")
+
+            def fake_run_git(_root, *args):
+                if args == ("symbolic-ref", "--quiet", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
+                if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
+                if args == ("rev-parse", "--verify", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
+                if args == ("diff", "--name-only", "HEAD", "--"):
+                    return subprocess.CompletedProcess(args, 0, stdout="changed.py\n", stderr="")
+                if args == ("ls-files", "--others", "--exclude-standard"):
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                if args == ("ls-files", "--stage", "--", "changed.py"):
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                if args == ("diff", "--no-ext-diff", "--unified=80", "HEAD", "--", "changed.py"):
+                    return subprocess.CompletedProcess(
+                        args,
+                        0,
+                        stdout="diff --git a/changed.py b/changed.py\n--- a/changed.py\n+++ b/changed.py\n@@ -1 +1 @@\n-x=0\n+x=1\n",
+                        stderr="",
+                    )
+                raise AssertionError(f"unexpected git command: {args}")
+
+            with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
+                "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ):
+                result = scan_directory(root, ScanOptions(changed_only=True))
+
+        self.assertIn("+++ b/changed.py", result.files[0].change)
+        self.assertLessEqual(len(result.files[0].change), 20_000)
+
     def test_changed_only_unborn_head_uses_ref_state_not_error_text(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

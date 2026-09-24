@@ -7,6 +7,29 @@ from jev_audit import cli
 
 
 class CLITests(unittest.TestCase):
+    def test_guardrail_options_are_forwarded(self):
+        with patch.object(cli, "run_audit", return_value=type("Report", (), {"status": "clear"})()) as run_audit, patch.object(
+            cli, "format_report", return_value="clear"
+        ), redirect_stdout(io.StringIO()) as output:
+            exit_code = cli.main(
+                [
+                    ".",
+                    "--max-files",
+                    "12",
+                    "--max-total-chars",
+                    "3456",
+                    "--max-batches",
+                    "7",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        run_audit.assert_called_once()
+        kwargs = run_audit.call_args.kwargs
+        self.assertEqual(kwargs["max_files"], 12)
+        self.assertEqual(kwargs["max_total_chars"], 3456)
+        self.assertEqual(kwargs["max_batches"], 7)
+
     def test_clean_changed_only_can_complete_without_api_key(self):
         output = io.StringIO()
         with patch.dict("os.environ", {}, clear=True), patch.object(

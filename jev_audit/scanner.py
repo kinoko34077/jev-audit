@@ -67,6 +67,8 @@ SENSITIVE_SUFFIXES = {
     ".keystore",
 }
 
+MAX_CHANGE_CHARS = 20_000
+
 
 @dataclass(frozen=True)
 class ScanOptions:
@@ -165,9 +167,56 @@ def _git_stage_modes(root: Path, names: set[str]) -> dict[str, str]:
     return modes
 
 
+def _git_change_by_path(root: Path, names: set[str]) -> dict[str, str]:
+    """Return bounded before/after hunks for changed regular files."""
+    if not names:
+        return {}
+    result = _run_git(
+        root,
+        "diff",
+        "--no-ext-diff",
+        "--unified=80",
+        "HEAD",
+        "--",
+        *sorted(names),
+    )
+    if result.returncode != 0:
+        raise _git_failure("git diff HEAD", result)
+
+    changes: dict[str, str] = {}
+    section: list[str] = []
+    current_path: str | None = None
+
+    def flush() -> None:
+        if current_path is None or not section:
+            return
+        text = "".join(section)
+        changes[current_path] = text[:MAX_CHANGE_CHARS]
+
+    for line in result.stdout.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            flush()
+            section = [line]
+            current_path = None
+            continue
+        if not section:
+            continue
+        section.append(line)
+        if line.startswith("+++ b/"):
+            current_path = line[6:].rstrip("\r\n")
+    flush()
+    return changes
+
+
 def _git_candidates(
     root: Path, changed_only: bool
-) -> tuple[list[Path], tuple[str, ...], dict[str, tuple[str, ...]], str | None] | None:
+) -> tuple[
+    list[Path],
+    tuple[str, ...],
+    dict[str, tuple[str, ...]],
+    str | None,
+    dict[str, str],
+] | None:
     if not _git_available():
         if _git_metadata_present(root):
             raise RuntimeError(
@@ -232,12 +281,19 @@ def _git_candidates(
         reason = "gitlink_change" if stage_modes.get(name) == "160000" else "non_file_change"
         skipped_paths[reason].append(name)
 
+    change_by_path: dict[str, str] = {}
+    if changed_only and head_exists and result:
+        change_by_path = _git_change_by_path(
+            root,
+            {path.relative_to(root).as_posix() for path in result},
+        )
     head_sha = None if head_exists is False else _git_head_sha(root)
     return (
         result,
         tuple(sorted(deleted_names)),
         {reason: tuple(sorted(paths)) for reason, paths in skipped_paths.items()},
         head_sha,
+        change_by_path,
     )
 
 
@@ -309,8 +365,9 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         deleted_paths: tuple[str, ...] = ()
         pre_skipped_paths: dict[str, tuple[str, ...]] = {}
         head_sha = None
+        change_by_path: dict[str, str] = {}
     else:
-        candidates, deleted_paths, pre_skipped_paths, head_sha = git_result
+        candidates, deleted_paths, pre_skipped_paths, head_sha, change_by_path = git_result
 
     skipped = Counter()
     skipped_paths: dict[str, list[str]] = defaultdict(list)
@@ -360,6 +417,7 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
                 chars=len(clipped),
                 original_chars=len(text),
                 truncated=truncated,
+                change=change_by_path.get(rel, ""),
             )
         )
 

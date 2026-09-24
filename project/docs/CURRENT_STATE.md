@@ -16,6 +16,8 @@ Last verified: 2026-09-24 — Project integration fixes and verification
 - Changed-only skip-only sets return a normal `unknown` report without a Jev call
 - Profile, Git, provider-response, MCP scope, Runtime opt-in, coverage, and
   provenance boundaries are validated fail-closed
+- Core/CLI/MCP total-work guardrails and changed-only diff context are enabled;
+  missing provider token usage remains explicitly unreported
 - CLI clean changed-only no-op does not require an API key because no Jev request
   is issued
 
@@ -29,7 +31,8 @@ Last verified: 2026-09-24 — Project integration fixes and verification
 
 - The Base workflow is an additional common verification gate; the existing
   matrix workflow remains Project-owned.
-- Optional `kinotch-runtime` installation is not part of the default setup.
+- Optional `kinotch-runtime` installation is not part of the default setup and
+  is provided through the source-only `requirements-pilot.txt` file.
 - Runtime execution also requires explicit `JEV_AUDIT_RUNTIME=1` opt-in.
 - Provider credentials and external API behavior remain outside the Base layer.
 

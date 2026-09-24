@@ -5,6 +5,24 @@ from jev_audit.reporting import format_report
 
 
 class ReportingTests(unittest.TestCase):
+    def test_report_marks_unreported_token_usage(self):
+        report = AuditReport(
+            root="C:/repo",
+            profile="development",
+            files_scanned=0,
+            batches=0,
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": True, "deleted_paths": ()},
+            batch_audits=(),
+            aggregate={
+                "overall": {"status": "unknown"},
+                "usage": {"input_tokens": None, "output_tokens": 4},
+            },
+        )
+        text = format_report(report)
+        self.assertIn("tokens : input=- output=4", text)
+
     def test_report_exposes_driver_rework_unknown_and_wall_clock(self):
         result = JevResult(
             model="jev-test",

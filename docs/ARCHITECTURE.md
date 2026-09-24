@@ -10,7 +10,7 @@ MCP ─┘
 
 ## 境界
 
-- `scanner.py`: ファイル列挙・安全な除外・必要最小限のGit-aware列挙
+- `scanner.py`: ファイル列挙・安全な除外・Git-aware列挙とbounded diff context
 - `batching.py`: Jevへ送る単位へ分割
 - `jev_gateway.py`: Jev質問とTypeSafe SDK境界
 - `aggregate.py`: バッチ結果の軽量な決定的集約
@@ -46,3 +46,4 @@ Jevの`local_status`はrisk値と分離する。`review + rework`は要確認判
 MCP adapter resolves the target directory in this order: explicit tool `path`, Claude Code `CLAUDE_PROJECT_DIR`, then server process cwd. The Audit Core itself remains client-agnostic.
 
 changed-onlyでは削除ファイルの存在を検出・報告するが、削除前本文は復元せずJev監査対象には含めない。
+追跡済みregular fileの変更では、最大20,000文字のGit diff hunkをfile stateへ添付する。untracked fileやGitなしのfocused scanでは現在本文だけを渡す。

@@ -114,12 +114,17 @@ Jevで並列・局所監査
 - 各ファイル最大 12,000文字
 - 1バッチ最大 32,000文字
 - 並列 4 request
+- 監査対象最大 10,000 files / 5,000,000送信文字 / 1,000 batches
+- workersは最大32（MCP経由は最大16）
 
 必要なら変更できます。
 
 ```powershell
 jev-audit . --workers 2 --batch-chars 24000
 ```
+
+総量guardrailを変更する場合は、`--max-files`、`--max-total-chars`、
+`--max-batches`を明示します。超過時はJev requestを開始せずエラーで停止します。
 
 ## 監査プロファイル
 
@@ -180,7 +185,7 @@ jev-audit-mcp
 
 Codexではactive workspace/repositoryの絶対pathをtool引数 `path` として渡すのが確実です。Claude Codeでは`path`を明示してもよく、省略時は`CLAUDE_PROJECT_DIR`を使用します。CLIとMCPは同じAudit Coreを使用します。
 
-MCPは既定で`JEV_AUDIT_ALLOWED_ROOT`（未設定時は`CLAUDE_PROJECT_DIR`、さらに未設定ならserverのcurrent directory）配下だけを監査します。任意pathを明示的に許可する場合だけ`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定してください。MCPにはfile size、batch size、workersのhard capもあります。
+MCPは既定で`JEV_AUDIT_ALLOWED_ROOT`（未設定時は`CLAUDE_PROJECT_DIR`、さらに未設定ならserverのcurrent directory）配下だけを監査します。custom profileのJSON pathも同じroot制限を受けます。任意pathを明示的に許可する場合だけ`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定してください。MCPにはfile size、batch size、workers、総files、総文字数、総batchesのhard capもあります。
 
 ## KiNoTch Runtime Pilot
 
@@ -189,11 +194,13 @@ the Audit Core. Install the pinned Runtime reference package when evaluating
 the shared `repo.audit` Action boundary:
 
 ```powershell
-python -m pip install -e ".[pilot]"
+python -m pip install -r requirements-pilot.txt
 $env:JEV_AUDIT_RUNTIME = "1"
 ```
 
-When `JEV_AUDIT_RUNTIME=1` is explicitly set and `kinotch_runtime` is importable,
+The Pilot dependency is kept in `requirements-pilot.txt` because it is pinned to
+a Git commit and is not published as a Python distribution dependency. When
+`JEV_AUDIT_RUNTIME=1` is explicitly set and `kinotch_runtime` is importable,
 both CLI and MCP call the existing Audit Core through the Runtime kernel. Without
 that opt-in, the direct Audit Core path remains active even if the package happens
 to be installed. This is a measurement boundary, not a CLI/MCP Surface Pack. Known audit and provider
@@ -213,6 +220,7 @@ The evaluated live Pilot evidence and remaining Contract boundary are recorded i
 - `reason`: statusの判定条件とbatch。triggerには対象`paths`も含まれます。
 - `coverage`: 送信文字数/元文字数、truncated file数、skip file数。`truncated_paths`と`skipped_paths_by_reason`で対象範囲を復元できます。
 - `provenance`: tool version、resolved model、profile hash、scan条件、Git HEAD SHA。再現性確認に使います。
+- `tokens`: providerがusageを返さない場合はJSONで`null`、テキストでは`-`です。未報告を0 tokenと解釈しないでください。
 - `api work`: 並列Jev requestの処理時間合計であり、実待ち時間ではない
 
 GREENは安全証明ではありません。riskの値は正解率やrepo品質スコアでもありません。いずれのstatusでも、テスト・実操作・詳細レビューを省略する根拠にはなりません。

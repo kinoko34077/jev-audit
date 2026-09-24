@@ -1,0 +1,4 @@
+# Source-only Runtime Pilot dependency.
+# Kept outside pyproject metadata so a future PyPI distribution has no direct
+# VCS dependency while the pinned Pilot remains reproducible from this repo.
+kinotch-runtime @ git+https://github.com/kinoko34077/kinotch-runtime.git@be5486efdca1f34b6ecafd19cf796ecd07e496ef

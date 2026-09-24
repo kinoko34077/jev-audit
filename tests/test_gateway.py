@@ -196,6 +196,31 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "noul"):
             jev_gateway._serialize_response(response, 1.0)
 
+    def test_invalid_token_usage_is_rejected(self):
+        response = SimpleNamespace(
+            choices={
+                "local_status": SimpleNamespace(
+                    choice="clear",
+                    confidence=1.0,
+                    probabilities={
+                        "clear": 1.0,
+                        "review": 0.0,
+                        "rework": 0.0,
+                        "unknown": 0.0,
+                    },
+                )
+            },
+            nouls={
+                "concrete_issue": SimpleNamespace(noul=0.0),
+                "spec_mismatch": SimpleNamespace(noul=0.0),
+                "regression_risk": SimpleNamespace(noul=0.0),
+            },
+            usage=SimpleNamespace(input_tokens=-1, output_tokens=1),
+            model="jev-test",
+        )
+        with self.assertRaisesRegex(RuntimeError, "input_tokens"):
+            jev_gateway._serialize_response(response, 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

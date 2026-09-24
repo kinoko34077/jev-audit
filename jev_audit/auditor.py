@@ -14,18 +14,27 @@ from .profiles import load_profile
 from .scanner import ScanOptions, scan_directory
 
 
+DEFAULT_MAX_FILES = 10_000
+DEFAULT_MAX_TOTAL_CHARS = 5_000_000
+DEFAULT_MAX_BATCHES = 1_000
+MAX_WORKERS = 32
+
+
 def _batch_state(batch: Batch) -> dict[str, Any]:
     # 監査規定はquestions側へ持たせ、stateは監査対象そのものだけにする。
     # 各バッチでprofile名・説明・scan modeを重複送信しない。
+    files: list[dict[str, Any]] = []
+    for item in batch.files:
+        entry = {
+            "path": item.path,
+            "truncated": item.truncated,
+            "content": item.content,
+        }
+        if item.change:
+            entry["change"] = item.change
+        files.append(entry)
     return {
-        "files": [
-            {
-                "path": item.path,
-                "truncated": item.truncated,
-                "content": item.content,
-            }
-            for item in batch.files
-        ],
+        "files": files,
     }
 
 
@@ -101,8 +110,11 @@ def _audit_batches(
 
 
 def _coverage(scan: Any) -> dict[str, Any]:
-    sent_chars = sum(item.chars for item in scan.files)
-    original_chars = sum(item.original_chars for item in scan.files)
+    content_sent_chars = sum(item.chars for item in scan.files)
+    content_original_chars = sum(item.original_chars for item in scan.files)
+    change_chars = sum(len(item.change) for item in scan.files)
+    sent_chars = content_sent_chars + change_chars
+    original_chars = content_original_chars + change_chars
     files_skipped = sum(scan.skipped_counts.values())
     return {
         "files_scanned": len(scan.files),
@@ -111,6 +123,9 @@ def _coverage(scan: Any) -> dict[str, Any]:
         "files_truncated": sum(1 for item in scan.files if item.truncated),
         "sent_chars": sent_chars,
         "original_chars": original_chars,
+        "content_sent_chars": content_sent_chars,
+        "content_original_chars": content_original_chars,
+        "change_chars": change_chars,
         "char_coverage": sent_chars / original_chars if original_chars else None,
     }
 
@@ -125,6 +140,9 @@ def _provenance(
     batch_chars: int,
     workers: int,
     requested_model: str | None,
+    max_files: int | None,
+    max_total_chars: int | None,
+    max_batches: int | None,
 ) -> dict[str, Any]:
     return {
         "tool_version": __version__,
@@ -138,6 +156,9 @@ def _provenance(
         "max_file_bytes": max_file_bytes,
         "batch_chars": batch_chars,
         "workers": workers,
+        "max_files": max_files,
+        "max_total_chars": max_total_chars,
+        "max_batches": max_batches,
         "git_head_sha": scan.git.get("head_sha"),
     }
 
@@ -152,6 +173,9 @@ def audit_directory(
     batch_chars: int = 32_000,
     workers: int = 4,
     model: str | None = None,
+    max_files: int | None = DEFAULT_MAX_FILES,
+    max_total_chars: int | None = DEFAULT_MAX_TOTAL_CHARS,
+    max_batches: int | None = DEFAULT_MAX_BATCHES,
 ) -> AuditReport:
     if max_file_chars <= 0:
         raise ValueError("max_file_chars must be > 0")
@@ -159,6 +183,17 @@ def audit_directory(
         raise ValueError("max_file_bytes must be > 0")
     if batch_chars <= 0:
         raise ValueError("batch_chars must be > 0")
+    for name, value in (
+        ("max_files", max_files),
+        ("max_total_chars", max_total_chars),
+        ("max_batches", max_batches),
+    ):
+        if value is not None and (type(value) is not int or value <= 0):
+            raise ValueError(f"{name} must be > 0 or None")
+    if type(workers) is not int or workers <= 0:
+        raise ValueError("workers must be > 0")
+    if workers > MAX_WORKERS:
+        raise ValueError(f"workers must be <= {MAX_WORKERS}")
 
     started = time.perf_counter()
 
@@ -182,8 +217,21 @@ def audit_directory(
         batch_chars=batch_chars,
         workers=workers,
         requested_model=model,
+        max_files=max_files,
+        max_total_chars=max_total_chars,
+        max_batches=max_batches,
     )
     truncated_paths = tuple(item.path for item in scan.files if item.truncated)
+
+    if max_files is not None and len(scan.files) > max_files:
+        raise ValueError(
+            f"max_files exceeded: {len(scan.files)} auditable files > {max_files}"
+        )
+    sent_chars = sum(item.chars + len(item.change) for item in scan.files)
+    if max_total_chars is not None and sent_chars > max_total_chars:
+        raise ValueError(
+            f"max_total_chars exceeded: {sent_chars} sent characters > {max_total_chars}"
+        )
 
     if not scan.files:
         if not changed_only:
@@ -210,7 +258,11 @@ def audit_directory(
         )
 
     batches = make_batches(scan.files, batch_chars)
-    workers = max(1, min(workers, max(1, len(batches))))
+    if max_batches is not None and len(batches) > max_batches:
+        raise ValueError(
+            f"max_batches exceeded: {len(batches)} batches > {max_batches}"
+        )
+    workers = min(workers, max(1, len(batches)))
 
     batch_audits = _audit_batches(tuple(batches), profile_obj, model, workers)
     aggregate = aggregate_batches(batch_audits)

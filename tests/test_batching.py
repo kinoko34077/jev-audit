@@ -32,6 +32,18 @@ class BatchingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exceeds max_chars"):
             make_batches((item,), max_chars=100)
 
+    def test_changed_hunk_counts_toward_batch_limit(self):
+        item = FileSnapshot(
+            path="changed.py",
+            content="x",
+            chars=1,
+            original_chars=1,
+            truncated=False,
+            change="diff" * 20,
+        )
+        with self.assertRaisesRegex(ValueError, "exceeds max_chars"):
+            make_batches((item,), max_chars=50)
+
 
 if __name__ == "__main__":
     unittest.main()

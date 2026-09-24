@@ -15,6 +15,21 @@ class ProjectOverlayTests(unittest.TestCase):
         self.assertEqual(manifest["paths"]["tests"], "../tests/")
         self.assertEqual(manifest["paths"]["docs"], "../docs/")
 
+    def test_pilot_git_dependency_is_source_requirements_only(self):
+        root = Path(__file__).parents[1]
+        pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+        pilot_requirements = root / "requirements-pilot.txt"
+        self.assertNotIn("kinotch-runtime @ git+", pyproject)
+        self.assertIn("kinotch-runtime @ git+", pilot_requirements.read_text(encoding="utf-8"))
+
+    def test_windows_launcher_uses_unicode_safe_writer(self):
+        root = Path(__file__).parents[1]
+        launcher = (root / "install-command.ps1").read_text(encoding="utf-8")
+        self.assertIn("WriteAllText", launcher)
+        self.assertIn("jev-audit.ps1", launcher)
+        self.assertIn("UTF8Encoding", launcher)
+        self.assertNotIn("Set-Content -Encoding ASCII", launcher)
+
 
 if __name__ == "__main__":
     unittest.main()

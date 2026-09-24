@@ -16,9 +16,6 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["mcp>=2,<3"]
-pilot = [
-  "kinotch-runtime @ git+https://github.com/kinoko34077/kinotch-runtime.git@be5486efdca1f34b6ecafd19cf796ecd07e496ef",
-]
 
 [project.scripts]
 jev-audit = "jev_audit.cli:main"

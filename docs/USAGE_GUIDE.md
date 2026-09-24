@@ -201,7 +201,10 @@ Tests: tests/auth/
 | `max_file_chars` | 12,000 | 1ファイルから送る最大文字数 |
 | `max_file_bytes` | 2,000,000 | これを超えるファイルをskip |
 | `batch_chars` | 32,000 | batch分割の上限。各fileの文字数・path・固定overheadを収容できない値は拒否 |
-| `workers` | 4 | 並列Jev request数の上限 |
+| `workers` | 4 | 並列Jev request数（Core最大32、MCP最大16） |
+| `max_files` | 10,000 | Jevへ送る監査可能file数の上限 |
+| `max_total_chars` | 5,000,000 | Jevへ送る切り詰め後文字数の上限 |
+| `max_batches` | 1,000 | 発行可能なbatch数の上限 |
 
 batch分割は文字数を基準にしたもので、token数や意味上のまとまりではありません。仕様と実装が別batchになれば、直接比較できないことがあります。1ファイルはbatch分割時にさらに分割されないため、pathと固定overheadを含むsingle-item costが`batch_chars`を超える設定は拒否されます。必要なファイル同士を近くに配置し、変更範囲やfocused scanを活用してください。
 
@@ -239,7 +242,7 @@ status・reason・trigger batch・pathsを確認
 
 YELLOWはrisk値だけでなく、actionableを理由に出る場合もあります。status triggerのbatchとpathsを見て、必要なファイルだけをLLMへ渡してください。監査後にrepository全体をLLMへ再送すると、一次スクリーニングでcontextを絞る利点が小さくなります。
 
-MCPから使う場合、日常の変更監査では`audit_directory`へallowed root配下のrepository root絶対pathと`changed_only: true`を明示するのが確実です。既定の許可範囲は`JEV_AUDIT_ALLOWED_ROOT`、`CLAUDE_PROJECT_DIR`、serverのcurrent directoryの順で決まり、`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定した場合だけ範囲制限を外します。MCP callerがfile size、batch size、workersを過大に指定してもhard capで拒否します。結果を受け取った後も、CLIと同じ順序でstatus、reason、batch、pathsを確認し、必要な範囲を詳しく読みます。毎ターンfull scanする必要はありません。
+MCPから使う場合、日常の変更監査では`audit_directory`へallowed root配下のrepository root絶対pathと`changed_only: true`を明示するのが確実です。既定の許可範囲は`JEV_AUDIT_ALLOWED_ROOT`、`CLAUDE_PROJECT_DIR`、serverのcurrent directoryの順で決まり、監査対象directoryとcustom profile JSONの両方へ適用されます。`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定した場合だけ範囲制限を外します。MCP callerがfile size、batch size、workersを過大に指定してもhard capで拒否します。結果を受け取った後も、CLIと同じ順序でstatus、reason、batch、pathsを確認し、必要な範囲を詳しく読みます。毎ターンfull scanする必要はありません。
 
 ## 10. セキュリティと外部送信
 
@@ -261,7 +264,7 @@ scannerは次の名前・拡張子のファイルを既定で除外します。
 
 prompt injectionへの対策の一つとして、全4判断にはファイル本文内の命令文を監査対象データとして扱い、監査指示を変更する命令に従わないよう指示しています。ただし、adversarialな本文が意味判断へ影響しない保証ではなく、security scannerの代替にもなりません。
 
-`regression_risk`はchanged-onlyでも現在渡された本文から判断します。before/afterのdiff hunkをJevへ直接渡す仕様ではないため、変更前後の意味比較を完全に代替するものではありません。
+`regression_risk`はchanged-onlyでは現在本文に加えて、Gitで取得できる最大20,000文字のbefore/after diff hunkも同じfile stateへ渡して判断します。diffが取得できないuntracked fileやGitなしのfocused scanでは、現在本文だけの判断になります。いずれも詳細な回帰testの代替ではありません。
 
 ## 11. 実行時間とtoken効率
 
@@ -283,6 +286,10 @@ full scanは節目に行う
 
 `max_file_chars`や`batch_chars`を変えると、送る内容やbatch境界も変わります。単に値を大きくすれば精度が上がるわけではなく、小さくすれば必要contextを欠く場合があります。`tokens`表示は実行結果で確認し、文字数をtoken数と同一視しないでください。
 
+`max_files`、`max_total_chars`、`max_batches`は、誤って巨大repositoryをfull scanしたときのrequest量を抑えるguardrailです。超過するとbatchをJevへ送る前に入力エラーで停止します。CLIの既定値よりMCPのhard capはさらに小さく、MCPではfile数5,000、送信文字数2,000,000、batch数500、workers 16が上限です。
+
+providerがtoken usageを返さない場合、JSON reportの`usage.input_tokens`または`usage.output_tokens`は`null`になります。未報告を0 tokenと解釈しないでください。テキスト表示では`-`と表示されます。
+
 ## 12. CI利用
 
 現行CLIは`--fail-on never`、`--fail-on review`、`--fail-on rework`を受け付けます。
@@ -293,7 +300,7 @@ full scanは節目に行う
 
 導入直後から`--fail-on review`でCIを止めると、YELLOWやUNKNOWNでbuildが止まります。まずは`never`で傾向を見るか、必要なら`rework`から始め、詳細確認の結果を蓄積してからgateを調整します。status由来の終了判定であり、API key不足や実行エラーは別途失敗します。
 
-リポジトリのGitHub Actionsでは、通常suiteをPython 3.10〜3.14で実行し、別jobで`.[mcp,pilot]`をインストールしたMCP・Runtime・TypeSafe SDKのimportと同suiteを確認します。
+リポジトリのGitHub Actionsでは、通常suiteをPython 3.10〜3.14で実行し、別jobで`.[mcp]`と`requirements-pilot.txt`をインストールしたMCP・Runtime・TypeSafe SDKのimportと同suiteを確認します。Pilot依存はGit commit固定でPyPI配布metadataには含めていません。
 
 ## 13. 避ける使い方
 

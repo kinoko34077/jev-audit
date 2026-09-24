@@ -19,8 +19,10 @@ optional, but it wraps the same required Jev-backed Audit Core when enabled.
 5. Runtime behavior requires explicit opt-in while non-empty audits still use
    the same Jev gateway and deterministic aggregation.
 6. Bundled profiles, Git metadata, changed non-file entries, provider response
-   semantics, MCP path scope, and report provenance fail closed at their
-   respective boundaries.
+   semantics, MCP path scope, report provenance, and total-work guardrails fail
+   closed at their respective boundaries.
+7. changed-only regular files include bounded Git diff context when available;
+   untracked and non-Git focused scans remain content-only.
 
 ## Ownership boundary
 

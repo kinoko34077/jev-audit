@@ -105,6 +105,8 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
     signal_values: dict[str, list[float]] = defaultdict(list)
     total_input = 0
     total_output = 0
+    input_tokens_complete = True
+    output_tokens_complete = True
     total_latency = 0.0
     ranked_batches: list[dict[str, Any]] = []
 
@@ -116,8 +118,12 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
         output_tokens = result.usage.get("output_tokens")
         if isinstance(input_tokens, int):
             total_input += input_tokens
+        else:
+            input_tokens_complete = False
         if isinstance(output_tokens, int):
             total_output += output_tokens
+        else:
+            output_tokens_complete = False
 
         for name in RISK_SIGNALS:
             signal_values[name].append(float(result.nouls.get(name, 0.0)))
@@ -162,8 +168,8 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
             for name, values in sorted(signal_values.items())
         },
         "usage": {
-            "input_tokens": total_input,
-            "output_tokens": total_output,
+            "input_tokens": total_input if input_tokens_complete or not batch_audits else None,
+            "output_tokens": total_output if output_tokens_complete or not batch_audits else None,
         },
         "total_batch_latency_ms": total_latency,
         "highest_risk_batches": ranked_batches[:10],

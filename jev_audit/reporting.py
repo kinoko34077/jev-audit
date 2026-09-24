@@ -20,6 +20,12 @@ def _pct(value: float | None) -> str:
     return f"{value * 100:5.1f}%"
 
 
+def _tokens(value: object) -> str:
+    if value is None:
+        return "-"
+    return str(int(value))
+
+
 def format_report(report: AuditReport) -> str:
     aggregate = report.aggregate
     overall = aggregate.get("overall", {})
@@ -82,8 +88,8 @@ def format_report(report: AuditReport) -> str:
 
     usage = aggregate.get("usage", {})
     lines.append(
-        f"tokens : input={int(usage.get('input_tokens', 0))} "
-        f"output={int(usage.get('output_tokens', 0))}"
+        f"tokens : input={_tokens(usage.get('input_tokens', 0))} "
+        f"output={_tokens(usage.get('output_tokens', 0))}"
     )
     lines.append(
         f"elapsed: {float(aggregate.get('wall_clock_ms', 0.0)):.1f} ms (wall-clock)"

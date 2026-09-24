@@ -21,10 +21,10 @@ Status: evaluation complete; Runtime remains optional and provisional
 
 - The original Pilot evidence below is retained as a historical record from
   before the error-bridge hardening; it is not a current CI claim.
-- Current local core suite: 72 tests ran with one optional Runtime integration
-  test skipped when the Pilot extra is absent.
-- Current local optional-integration suite: 72 tests passed with
-  `kinotch-runtime`, `mcp`, and `typesafe-sdk` installed; the actual Runtime
+- Current local core suite: 82 tests ran with one optional Runtime integration
+  test skipped when the Pilot requirements file is absent.
+- Current local optional-integration suite: 82 tests passed with
+  `requirements-pilot.txt`, `mcp`, and `typesafe-sdk` installed; the actual Runtime
   kernel integration test executed.
 - Current bridge tests cover known provider error preservation and unknown
   exception redaction through the Runtime kernel's `INTERNAL_ERROR` contract.

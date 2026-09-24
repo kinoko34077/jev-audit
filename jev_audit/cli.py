@@ -5,6 +5,12 @@ import json
 from pathlib import Path
 import sys
 
+from .auditor import (
+    DEFAULT_MAX_BATCHES,
+    DEFAULT_MAX_FILES,
+    DEFAULT_MAX_TOTAL_CHARS,
+    MAX_WORKERS,
+)
 from .profiles import available_profiles
 from .reporting import format_report, write_json
 from .runtime_bridge import run_audit
@@ -21,7 +27,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-file-chars", type=int, default=12_000)
     parser.add_argument("--max-file-bytes", type=int, default=2_000_000)
     parser.add_argument("--batch-chars", type=int, default=32_000)
-    parser.add_argument("--workers", type=int, default=4, help="parallel Jev batch requests")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help=f"parallel Jev batch requests (maximum {MAX_WORKERS})",
+    )
+    parser.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES)
+    parser.add_argument("--max-total-chars", type=int, default=DEFAULT_MAX_TOTAL_CHARS)
+    parser.add_argument("--max-batches", type=int, default=DEFAULT_MAX_BATCHES)
     parser.add_argument(
         "--model",
         help="Jev model name (default: pinned jev-1.13.0; TYPESAFE_DEFAULT_MODEL overrides it)",
@@ -66,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
             batch_chars=args.batch_chars,
             workers=args.workers,
             model=args.model,
+            max_files=args.max_files,
+            max_total_chars=args.max_total_chars,
+            max_batches=args.max_batches,
         )
     except Exception as exc:
         print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)

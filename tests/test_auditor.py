@@ -17,6 +17,22 @@ class AuditorTests(unittest.TestCase):
         state = _batch_state(batch)
         self.assertEqual(set(state), {"files"})
 
+    def test_batch_state_includes_changed_hunk_when_available(self):
+        batch = Batch(
+            index=1,
+            files=(
+                FileSnapshot(
+                    path="a.py",
+                    content="x=2",
+                    chars=3,
+                    original_chars=3,
+                    truncated=False,
+                    change="@@ -1 +1 @@\n-x=1\n+x=2\n",
+                ),
+            ),
+        )
+        self.assertEqual(_batch_state(batch)["files"][0]["change"], batch.files[0].change)
+
     def test_invalid_limits_are_rejected_before_scan(self):
         with self.assertRaises(ValueError):
             audit_directory(".", max_file_chars=0)
@@ -24,6 +40,68 @@ class AuditorTests(unittest.TestCase):
             audit_directory(".", max_file_bytes=0)
         with self.assertRaises(ValueError):
             audit_directory(".", batch_chars=0)
+        with self.assertRaises(ValueError):
+            audit_directory(".", max_files=0)
+        with self.assertRaises(ValueError):
+            audit_directory(".", max_total_chars=0)
+        with self.assertRaises(ValueError):
+            audit_directory(".", max_batches=0)
+        with self.assertRaises(ValueError):
+            audit_directory(".", workers=0)
+
+    def test_total_guardrails_reject_before_any_jev_request(self):
+        files = tuple(
+            FileSnapshot(
+                path=f"file-{index}.py",
+                content="x" * 100,
+                chars=100,
+                original_chars=100,
+                truncated=False,
+            )
+            for index in range(2)
+        )
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=files,
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": False, "deleted_paths": ()},
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor._audit_one"
+        ) as audit_one:
+            with self.assertRaisesRegex(ValueError, "max_total_chars"):
+                audit_directory(".", max_total_chars=150)
+        audit_one.assert_not_called()
+
+    def test_file_and_batch_guardrails_reject_before_any_jev_request(self):
+        files = tuple(
+            FileSnapshot(
+                path=f"file-{index}.py",
+                content="x" * 10,
+                chars=10,
+                original_chars=10,
+                truncated=False,
+            )
+            for index in range(3)
+        )
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=files,
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": False, "deleted_paths": ()},
+        )
+        for kwargs, message in (
+            ({"max_files": 2}, "max_files"),
+            ({"max_batches": 1, "batch_chars": 100}, "max_batches"),
+        ):
+            with self.subTest(message=message), patch(
+                "jev_audit.auditor.scan_directory", return_value=fake_scan
+            ), patch("jev_audit.auditor._audit_one") as audit_one:
+                with self.assertRaisesRegex(ValueError, message):
+                    audit_directory(".", **kwargs)
+                audit_one.assert_not_called()
 
     def test_wall_clock_is_measured_separately_from_batch_api_work(self):
         fake_result = JevResult(

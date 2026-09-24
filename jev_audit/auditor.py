@@ -8,7 +8,7 @@ from typing import Any
 from . import __version__
 from .aggregate import aggregate_batches
 from .batching import make_batches
-from .jev_gateway import _resolve_model, audit_with_jev
+from .jev_gateway import _resolve_model, audit_with_jev, estimate_question_overhead
 from .models import AuditProfile, AuditReport, Batch, BatchAudit
 from .profiles import load_profile
 from .scanner import ScanOptions, scan_directory
@@ -144,6 +144,8 @@ def _provenance(
     requested_workers: int,
     effective_workers: int,
     batch_count: int,
+    question_overhead_chars_per_batch: int,
+    estimated_total_input_chars: int,
     requested_model: str | None,
     max_files: int | None,
     max_total_chars: int | None,
@@ -167,6 +169,8 @@ def _provenance(
         "requested_workers": requested_workers,
         "effective_workers": effective_workers,
         "batch_count": batch_count,
+        "question_overhead_chars_per_batch": question_overhead_chars_per_batch,
+        "estimated_total_input_chars": estimated_total_input_chars,
         "max_files": max_files,
         "max_total_chars": max_total_chars,
         "max_batches": max_batches,
@@ -217,6 +221,8 @@ def audit_directory(
             changed_only=changed_only,
             max_file_chars=max_file_chars,
             max_file_bytes=max_file_bytes,
+            max_files=max_files,
+            max_total_chars=max_total_chars,
         ),
     )
     coverage = _coverage(scan)
@@ -245,6 +251,8 @@ def audit_directory(
             requested_workers=requested_workers,
             effective_workers=0,
             batch_count=0,
+            question_overhead_chars_per_batch=0,
+            estimated_total_input_chars=0,
             requested_model=model,
             max_files=max_files,
             max_total_chars=max_total_chars,
@@ -277,6 +285,16 @@ def audit_directory(
         raise ValueError(
             f"max_batches exceeded: {len(batches)} batches > {max_batches}"
         )
+    question_overhead = estimate_question_overhead(profile_obj)
+    estimated_total_input_chars = sum(
+        batch.chars + question_overhead for batch in batches
+    )
+    if max_total_chars is not None and estimated_total_input_chars > max_total_chars:
+        raise ValueError(
+            "max_total_chars exceeded: estimated "
+            f"{estimated_total_input_chars} input characters > {max_total_chars} "
+            f"(question overhead {question_overhead} per batch)"
+        )
     effective_workers = min(requested_workers, len(batches))
     provenance = _provenance(
         profile_obj,
@@ -288,6 +306,8 @@ def audit_directory(
         requested_workers=requested_workers,
         effective_workers=effective_workers,
         batch_count=len(batches),
+        question_overhead_chars_per_batch=question_overhead,
+        estimated_total_input_chars=estimated_total_input_chars,
         requested_model=model,
         max_files=max_files,
         max_total_chars=max_total_chars,

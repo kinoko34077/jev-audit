@@ -132,7 +132,7 @@ class ReportingTests(unittest.TestCase):
             },
             excluded_directories=(".kinotch", "src/.venv"),
             provenance={
-                "tool_version": "0.2.10",
+                "tool_version": "0.2.11",
                 "resolved_model": "jev-1.13.0",
                 "git_head_sha": "abc123",
             },
@@ -144,7 +144,7 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("file_entries_skipped=1", text)
         self.assertIn("directories_excluded=2", text)
         self.assertIn("excluded directories: .kinotch, src/.venv", text)
-        self.assertIn("provenance: tool=0.2.10 model=jev-1.13.0 git=abc123", text)
+        self.assertIn("provenance: tool=0.2.11 model=jev-1.13.0 git=abc123", text)
 
 
 if __name__ == "__main__":

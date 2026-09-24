@@ -86,24 +86,49 @@ def _rules_text(profile: AuditProfile) -> str:
     )
 
 
+def _local_status_instructions(profile: AuditProfile) -> str:
+    return (
+        "このファイル群だけを高速簡易監査してください。欠落している外部証拠を違反扱いせず、"
+        "ファイル内容から直接確認できる問題だけを重く評価してください。"
+        + INPUT_DATA_RULE
+        + "\n"
+        + "監査規定:\n"
+        + _rules_text(profile)
+    )
+
+
+def _noul_instructions(prompt: str) -> str:
+    return INPUT_DATA_RULE + "\n" + prompt
+
+
+def estimate_question_overhead(profile: AuditProfile) -> int:
+    """Estimate question text repeated for every Jev batch.
+
+    The estimate intentionally covers the profile-dependent criteria and all
+    question instructions. It is used for the total input guardrail; provider
+    transport serialization overhead is outside this local character budget.
+    """
+    local_status = _local_status_instructions(profile)
+    criteria = sum(
+        len(str(key)) + len(str(value))
+        for key, value in profile.status_criteria.items()
+    )
+    nouls = sum(len(_noul_instructions(prompt)) for prompt in LOCAL_NOULS.values())
+    return len(local_status) + criteria + nouls
+
+
 def _build_questions(profile: AuditProfile) -> dict[str, Any]:
     Choice, Noul, _ = _sdk()
 
-    rules = _rules_text(profile)
     questions: dict[str, Any] = {
         "local_status": Choice(
-            instructions=(
-                "このファイル群だけを高速簡易監査してください。欠落している外部証拠を違反扱いせず、"
-                "ファイル内容から直接確認できる問題だけを重く評価してください。"
-                + INPUT_DATA_RULE + "\n"
-                "監査規定:\n" + rules
-            ),
+            instructions=_local_status_instructions(profile),
             criteria=profile.status_criteria,
         ),
     }
 
     for key, prompt in LOCAL_NOULS.items():
-        questions[key] = Noul(instructions=INPUT_DATA_RULE + "\n" + prompt)
+        questions[key] = Noul(instructions=_noul_instructions(prompt))
 
     return questions
 

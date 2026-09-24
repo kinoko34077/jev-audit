@@ -1,9 +1,9 @@
 # Current State
 
 Base version: `0.3.8`
-Project version: `0.2.10`
+Project version: `0.2.11`
 
-Last verified: 2026-09-24 — boundary finish, version bump, and verification
+Last verified: 2026-09-24 — guardrail and changed-only scan finish
 
 ## Implemented
 
@@ -20,6 +20,10 @@ Last verified: 2026-09-24 — boundary finish, version bump, and verification
 - Core/CLI/MCP total-work guardrails and changed-only diff context are enabled;
   missing provider token usage remains explicitly unreported with completeness
   and missing-batch metadata
+- Total input guardrails include repeated question/profile instruction overhead;
+  scanner snapshot accumulation stops early at file and content limits
+- Changed-only Git scans do not walk unrelated repository trees to collect
+  excluded-directory metadata
 - MCP custom profiles use the shared profile resolver, allowed-root boundary,
   and 256,000-byte size cap before profile contents are read
 - Runtime opt-in without an installed or compatible Pilot dependency returns an
@@ -56,5 +60,5 @@ Last verified: 2026-09-24 — boundary finish, version bump, and verification
 - `knt base-check`
 - `knt setup`
 - `knt verify`
-- `python -m unittest discover -s tests -v` (101 tests; Windows skips the two
+- `python -m unittest discover -s tests -v` (107 tests; Windows skips the two
   newline-filename cases)

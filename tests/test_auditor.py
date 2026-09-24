@@ -6,7 +6,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from jev_audit.auditor import _batch_state, audit_directory
-from jev_audit.models import Batch, BatchAudit, FileSnapshot, JevResult, ScanResult
+from jev_audit.models import (
+    AuditProfile,
+    AuditRule,
+    Batch,
+    BatchAudit,
+    FileSnapshot,
+    JevResult,
+    ScanResult,
+)
+from jev_audit.jev_gateway import estimate_question_overhead
 
 
 class AuditorTests(unittest.TestCase):
@@ -73,6 +82,47 @@ class AuditorTests(unittest.TestCase):
         ) as audit_one:
             with self.assertRaisesRegex(ValueError, "max_total_chars"):
                 audit_directory(".", max_total_chars=150)
+        audit_one.assert_not_called()
+
+    def test_total_guardrail_includes_question_overhead_for_each_batch(self):
+        files = tuple(
+            FileSnapshot(
+                path=f"file-{index}.py",
+                content="x" * 10,
+                chars=10,
+                original_chars=10,
+                truncated=False,
+            )
+            for index in range(2)
+        )
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=files,
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": False, "deleted_paths": ()},
+        )
+        profile = AuditProfile(
+            name="custom",
+            description="",
+            rules=(AuditRule(id="R1", title="Rule", description="x" * 1000),),
+            status_criteria={
+                "clear": "ok",
+                "review": "review",
+                "rework": "rework",
+                "unknown": "unknown",
+            },
+        )
+        overhead = estimate_question_overhead(profile)
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor.load_profile", return_value=profile
+        ), patch("jev_audit.auditor._audit_one") as audit_one:
+            with self.assertRaisesRegex(ValueError, "max_total_chars"):
+                audit_directory(
+                    ".",
+                    batch_chars=64,
+                    max_total_chars=20 + (overhead * 2) - 1,
+                )
         audit_one.assert_not_called()
 
     def test_file_and_batch_guardrails_reject_before_any_jev_request(self):
@@ -337,6 +387,8 @@ class AuditorTests(unittest.TestCase):
         self.assertEqual(report.provenance["requested_workers"], 1)
         self.assertEqual(report.provenance["effective_workers"], 1)
         self.assertEqual(report.provenance["batch_count"], 1)
+        self.assertGreater(report.provenance["question_overhead_chars_per_batch"], 0)
+        self.assertGreater(report.provenance["estimated_total_input_chars"], 0)
         self.assertEqual(report.provenance["git_head_sha"], "abc123")
         self.assertTrue(report.provenance["profile_sha256"])
 

@@ -74,6 +74,8 @@ class ScanOptions:
     changed_only: bool = False
     max_file_chars: int = 12_000
     max_file_bytes: int = 2_000_000
+    max_files: int | None = None
+    max_total_chars: int | None = None
 
 
 def _git_available() -> bool:
@@ -302,7 +304,12 @@ def _git_candidates(
     result: list[Path] = []
     non_regular_names: set[str] = set()
     skipped_paths: dict[str, list[str]] = defaultdict(list)
-    excluded_directories = set(_collect_excluded_directories(root))
+    # A changed-only Git scan must remain bounded by the Git candidate set.
+    # Walking the whole repository here would make a small diff traverse every
+    # arbitrary gitignored dataset/cache tree just to produce metadata.
+    excluded_directories: set[str] = set()
+    if not changed_only:
+        excluded_directories.update(_collect_excluded_directories(root))
     excluded_directories.update(
         excluded
         for name in names
@@ -413,6 +420,12 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
     root = root.resolve()
     if not root.exists() or not root.is_dir():
         raise FileNotFoundError(f"Directory not found: {root}")
+    for name, value in (
+        ("max_files", options.max_files),
+        ("max_total_chars", options.max_total_chars),
+    ):
+        if value is not None and (type(value) is not int or value <= 0):
+            raise ValueError(f"{name} must be > 0 or None")
 
     git_result = _git_candidates(root, options.changed_only)
     is_git_repo = git_result is not None
@@ -442,6 +455,7 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         skipped_paths[reason].extend(paths)
     sensitive_paths: list[str] = []
     snapshots: list[FileSnapshot] = []
+    scanned_chars = 0
 
     for path in candidates:
         try:
@@ -473,6 +487,19 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
             continue
 
         clipped, truncated = _truncate_text(text, options.max_file_chars)
+        change = change_by_path.get(rel, "")
+        if options.max_files is not None and len(snapshots) >= options.max_files:
+            raise ValueError(
+                f"max_files exceeded during scan: more than {options.max_files} auditable files"
+            )
+        if options.max_total_chars is not None:
+            next_chars = scanned_chars + len(clipped) + len(change)
+            if next_chars > options.max_total_chars:
+                raise ValueError(
+                    "max_total_chars exceeded during scan: "
+                    f"{next_chars} sent characters > {options.max_total_chars}"
+                )
+            scanned_chars = next_chars
         snapshots.append(
             FileSnapshot(
                 path=rel,
@@ -480,7 +507,7 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
                 chars=len(clipped),
                 original_chars=len(text),
                 truncated=truncated,
-                change=change_by_path.get(rel, ""),
+                change=change,
             )
         )
 

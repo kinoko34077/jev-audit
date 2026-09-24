@@ -25,7 +25,7 @@ Status: evaluation complete; Runtime remains optional and provisional
 
 - The original Pilot evidence below is retained as a historical record from
   before the error-bridge hardening; it is not a current CI claim.
-- Current local suite: 101 tests ran (99 passed, two newline-path tests skipped
+- Current local suite: 107 tests ran (105 passed, two newline-path tests skipped
   on Windows because that filesystem cannot create newline filenames).
 - The optional-integration environment has `requirements-pilot.txt`, `mcp`, and
   `typesafe-sdk` installed; the actual Runtime kernel integration test executes

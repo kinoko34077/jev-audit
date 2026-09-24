@@ -187,7 +187,7 @@ jev-audit-mcp
 
 Codexではactive workspace/repositoryの絶対pathをtool引数 `path` として渡すのが確実です。Claude Codeでは`path`を明示してもよく、省略時は`CLAUDE_PROJECT_DIR`を使用します。CLIとMCPは同じAudit Coreを使用します。
 
-MCPは既定で`JEV_AUDIT_ALLOWED_ROOT`（未設定時は`CLAUDE_PROJECT_DIR`、さらに未設定ならserverのcurrent directory）配下だけを監査します。custom profileのJSON pathも同じroot制限を受け、本文を読む前に検証されます。任意pathを明示的に許可する場合だけ`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定してください。MCPにはfile size、batch size、workers、総files、総文字数、総batchesのhard capがあり、custom profile JSONは256,000 bytesまでです。
+MCPは既定で`JEV_AUDIT_ALLOWED_ROOT`（未設定時は`CLAUDE_PROJECT_DIR`、さらに未設定ならserverのcurrent directory）配下だけを監査します。custom profileのJSON pathも同じroot制限を受け、本文を読む前に検証されます。任意pathを明示的に許可する場合だけ`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定してください。MCPにはfile size、batch size、workers、総files、総input文字数、総batchesのhard capがあり、custom profile JSONは256,000 bytesまでです。総input文字数には各batchへ繰り返し入るquestion/profile instructionsの推定分も含まれます。
 
 ## KiNoTch Runtime Pilot
 
@@ -223,9 +223,11 @@ The evaluated live Pilot evidence and remaining Contract boundary are recorded i
 - `elapsed`: 実行開始から終了までのwall-clock時間
 - `reason`: statusの判定条件とbatch。triggerには対象`paths`も含まれます。
 - `coverage`: 実際に読み込んだtext fileの送信文字数/元文字数、truncated file数、file entry skip数、列挙しなかったignored directory数。`char_coverage`はこのscanned text file範囲だけの比率です。
-- `provenance`: tool version、requested/resolved model、profile hash、scan条件、requested/effective workers、実batch数、Git HEAD SHA。再現性確認に使います。
+- `provenance`: tool version、requested/resolved model、profile hash、scan条件、requested/effective workers、実batch数、profile/question overheadを含む推定総input文字数、Git HEAD SHA。再現性確認に使います。
 - `tokens`: providerがusageを返さない場合はJSONで`null`、テキストでは`-`です。部分報告ではreported合計と`*_missing_batches`が表示され、未報告を0 tokenと解釈しないでください。
 - `api work`: 並列Jev requestの処理時間合計であり、実待ち時間ではない
+
+`max_total_chars`は、ファイル本文とchanged-onlyの差分に加え、各batchへ繰り返し入るJev question/profile instructionsの推定文字数も含めて判定します。profileが大きいほど同じbatch数でも推定inputが増えるため、上限超過時はrequestを開始せず停止します。
 
 GREENは安全証明ではありません。riskの値は正解率やrepo品質スコアでもありません。いずれのstatusでも、テスト・実操作・詳細レビューを省略する根拠にはなりません。
 

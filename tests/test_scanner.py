@@ -43,6 +43,24 @@ class ScannerTests(unittest.TestCase):
             self.assertIn("main.py", paths)
             self.assertNotIn(".audit/result.json", paths)
 
+    def test_scan_enforces_max_files_while_building_snapshots(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "a.py").write_text("a", encoding="utf-8")
+            (root / "b.py").write_text("b", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "max_files"):
+                scan_directory(root, ScanOptions(max_files=1))
+
+    def test_scan_enforces_max_total_chars_while_building_snapshots(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "a.py").write_text("a" * 4, encoding="utf-8")
+            (root / "b.py").write_text("b" * 4, encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "max_total_chars"):
+                scan_directory(root, ScanOptions(max_total_chars=5))
+
     def test_ignored_directories_are_recorded_without_listing_child_files(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -195,6 +213,9 @@ class ScannerTests(unittest.TestCase):
 
             with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
                 "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ), patch(
+                "jev_audit.scanner._collect_excluded_directories",
+                side_effect=AssertionError("changed-only must not walk the repository"),
             ):
                 result = scan_directory(root, ScanOptions(changed_only=True))
 

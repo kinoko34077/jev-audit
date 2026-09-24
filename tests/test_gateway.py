@@ -92,6 +92,34 @@ class GatewayTests(unittest.TestCase):
         for key in ("concrete_issue", "spec_mismatch", "regression_risk"):
             self.assertIn("監査対象データ", questions[key].instructions)
 
+    def test_question_overhead_includes_profile_rules_and_criteria(self):
+        short = AuditProfile(
+            name="short",
+            description="",
+            rules=(AuditRule(id="R1", title="Rule", description="Check"),),
+            status_criteria={
+                "clear": "ok",
+                "review": "review",
+                "rework": "rework",
+                "unknown": "unknown",
+            },
+        )
+        long = AuditProfile(
+            name="long",
+            description="",
+            rules=(AuditRule(id="R1", title="Rule", description="x" * 5000),),
+            status_criteria={
+                "clear": "ok" * 1000,
+                "review": "review",
+                "rework": "rework",
+                "unknown": "unknown",
+            },
+        )
+        self.assertGreater(
+            jev_gateway.estimate_question_overhead(long),
+            jev_gateway.estimate_question_overhead(short),
+        )
+
     def test_partial_jev_response_is_rejected(self):
         response = SimpleNamespace(
             choices={

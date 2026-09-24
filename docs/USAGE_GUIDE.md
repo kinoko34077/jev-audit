@@ -1,6 +1,6 @@
 # jev-audit 利用ガイド
 
-このガイドは、`jev-audit v0.2.10`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
+このガイドは、`jev-audit v0.2.11`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
 
 ## 1. このツールの位置付け
 
@@ -203,7 +203,7 @@ Tests: tests/auth/
 | `batch_chars` | 32,000 | batch分割の上限。各fileの文字数・path・固定overheadを収容できない値は拒否 |
 | `workers` | 4 | 並列Jev request数（Core最大32、MCP最大16） |
 | `max_files` | 10,000 | Jevへ送る監査可能file数の上限 |
-| `max_total_chars` | 5,000,000 | Jevへ送る切り詰め後文字数の上限 |
+| `max_total_chars` | 5,000,000 | ファイル本文・差分と各batchのquestion/profile overheadを含む推定input文字数の上限 |
 | `max_batches` | 1,000 | 発行可能なbatch数の上限 |
 
 batch分割は文字数を基準にしたもので、token数や意味上のまとまりではありません。仕様と実装が別batchになれば、直接比較できないことがあります。1ファイルはbatch分割時にさらに分割されないため、pathと固定overheadを含むsingle-item costが`batch_chars`を超える設定は拒否されます。必要なファイル同士を近くに配置し、変更範囲やfocused scanを活用してください。
@@ -288,7 +288,9 @@ JSONの`provenance.requested_workers`は指定値、`effective_workers`は実際
 
 `max_file_chars`や`batch_chars`を変えると、送る内容やbatch境界も変わります。単に値を大きくすれば精度が上がるわけではなく、小さくすれば必要contextを欠く場合があります。`tokens`表示は実行結果で確認し、文字数をtoken数と同一視しないでください。
 
-`max_files`、`max_total_chars`、`max_batches`は、誤って巨大repositoryをfull scanしたときのrequest量を抑えるguardrailです。超過するとbatchをJevへ送る前に入力エラーで停止します。CLIの既定値よりMCPのhard capはさらに小さく、MCPではfile数5,000、送信文字数2,000,000、batch数500、workers 16が上限です。
+`max_files`、`max_total_chars`、`max_batches`は、誤って巨大repositoryをfull scanしたときのrequest量を抑えるguardrailです。scannerはsnapshotを蓄積する途中でfile数と本文・差分文字数を確認し、超過時点で停止します。さらにbatch化後は、各batchへ繰り返し入るJev question/profile instructionsの推定文字数も`max_total_chars`へ加算して判定します。超過するとJev requestを開始せず入力エラーで停止します。CLIの既定値よりMCPのhard capはさらに小さく、MCPではfile数5,000、送信文字数2,000,000、batch数500、workers 16が上限です。
+
+changed-onlyのGit scanでは、除外directoryのmetadata収集のためにrepository全体をwalkしません。Git差分・候補pathに現れた固定ignored directoryだけを`excluded_directories`へ記録します。full scanや非Gitのdirectory walkでは、従来どおりpruneしたignored directoryを記録します。
 
 providerがtoken usageを返さない場合、JSON reportの`usage.input_tokens`または`usage.output_tokens`は`null`（全batch未報告）になります。部分報告では報告済み合計と`input_tokens_complete` / `output_tokens_complete`、`*_missing_batches`が残ります。未報告を0 tokenと解釈しないでください。テキスト表示でも未報告batch数が示されます。
 

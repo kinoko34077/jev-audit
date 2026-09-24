@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import sys
 
@@ -56,10 +55,6 @@ def main(argv: list[str] | None = None) -> int:
         for name in available_profiles():
             print(name)
         return 0
-
-    if not os.getenv("TYPESAFE_API_KEY"):
-        print("ERROR: environment variable TYPESAFE_API_KEY is not set.", file=sys.stderr)
-        return 2
 
     try:
         report = run_audit(

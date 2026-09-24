@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -83,8 +84,18 @@ def _is_known_action_error(exc: Exception) -> bool:
     return type(exc).__name__ in _PROVIDER_ERROR_CODES
 
 
+def _runtime_opted_in() -> bool:
+    return os.environ.get("JEV_AUDIT_RUNTIME", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 def _load_runtime() -> SimpleNamespace | None:
-    """Load the optional Runtime package without changing the default install."""
+    """Load Runtime only after explicit ``JEV_AUDIT_RUNTIME`` opt-in."""
+    if not _runtime_opted_in():
+        return None
     try:
         from kinotch_runtime import (
             ActionContext,

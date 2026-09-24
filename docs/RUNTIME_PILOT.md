@@ -7,10 +7,12 @@ Status: evaluation complete; Runtime remains optional and provisional
 - `jev_audit/runtime_bridge.py` is an optional boundary. Its line count is not
   a contract; implementation details are kept in the source and its tests.
 - CLI and MCP import the same `run_audit` bridge entry point.
-- When `kinotch_runtime` is not importable, the bridge calls the existing Audit
-  Core directly; installing an extra is not itself the switching condition.
-- When the pinned `kinotch-runtime` package is importable, the bridge registers
-  and executes `repo.audit` through the Runtime `ActionRegistry`.
+- The bridge calls the existing Audit Core directly by default. Runtime is
+  enabled only when `JEV_AUDIT_RUNTIME=1` (or another accepted true value) is
+  explicitly set and the pinned package is importable.
+- When the explicit opt-in is active and the pinned `kinotch-runtime` package is
+  importable, the bridge registers and executes `repo.audit` through the Runtime
+  `ActionRegistry`.
 - The Runtime Pilot remains a boundary around the shared Audit Core; current
   scanner, batching, reporting, and MCP fixes are used by both direct and
   Runtime paths.
@@ -19,9 +21,9 @@ Status: evaluation complete; Runtime remains optional and provisional
 
 - The original Pilot evidence below is retained as a historical record from
   before the error-bridge hardening; it is not a current CI claim.
-- Current local core suite: 52 tests ran with one optional Runtime integration
+- Current local core suite: 72 tests ran with one optional Runtime integration
   test skipped when the Pilot extra is absent.
-- Current local optional-integration suite: 52 tests passed with
+- Current local optional-integration suite: 72 tests passed with
   `kinotch-runtime`, `mcp`, and `typesafe-sdk` installed; the actual Runtime
   kernel integration test executed.
 - Current bridge tests cover known provider error preservation and unknown

@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import tempfile
@@ -25,6 +26,10 @@ class ScannerTests(unittest.TestCase):
             self.assertNotIn("blob.bin", paths)
             self.assertIn(".env", result.skipped_sensitive_paths)
             self.assertIn("private.pem", result.skipped_sensitive_paths)
+            self.assertEqual(
+                result.skipped_paths_by_reason["binary_or_unknown_encoding"],
+                ("blob.bin",),
+            )
 
     def test_audit_directory_is_ignored_as_generated_output(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -139,6 +144,77 @@ class ScannerTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "simulated ls-files failure"):
                     scan_directory(root, ScanOptions())
+
+    def test_git_metadata_failure_does_not_fallback_to_directory_walk(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / ".git").mkdir()
+            (root / "ignored-secret.txt").write_text("private", encoding="utf-8")
+            with patch("jev_audit.scanner._is_git_root", return_value=False):
+                with self.assertRaisesRegex(RuntimeError, "Git metadata"):
+                    scan_directory(root, ScanOptions())
+
+    def test_changed_gitlink_is_recorded_as_skipped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "vendor-submodule").mkdir()
+
+            def fake_run_git(_root, *args):
+                if args == ("symbolic-ref", "--quiet", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
+                if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
+                if args == ("rev-parse", "--verify", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
+                if args == ("diff", "--name-only", "HEAD", "--"):
+                    return subprocess.CompletedProcess(args, 0, stdout="vendor-submodule\n", stderr="")
+                if args == ("ls-files", "--others", "--exclude-standard"):
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                if args == ("ls-files", "--stage", "--", "vendor-submodule"):
+                    return subprocess.CompletedProcess(args, 0, stdout="160000 abc 0\tvendor-submodule\n", stderr="")
+                raise AssertionError(f"unexpected git command: {args}")
+
+            with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
+                "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ):
+                result = scan_directory(root, ScanOptions(changed_only=True))
+
+        self.assertEqual(result.files, ())
+        self.assertEqual(result.skipped_counts.get("gitlink_change"), 1)
+        self.assertEqual(result.skipped_paths_by_reason["gitlink_change"], ("vendor-submodule",))
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_changed_symlink_is_recorded_as_skipped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = root / "target.txt"
+            target.write_text("target", encoding="utf-8")
+            link = root / "link.txt"
+            try:
+                os.symlink(target, link)
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+
+            def fake_run_git(_root, *args):
+                if args == ("symbolic-ref", "--quiet", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
+                if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
+                if args == ("rev-parse", "--verify", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
+                if args == ("diff", "--name-only", "HEAD", "--"):
+                    return subprocess.CompletedProcess(args, 0, stdout="link.txt\n", stderr="")
+                if args == ("ls-files", "--others", "--exclude-standard"):
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                raise AssertionError(f"unexpected git command: {args}")
+
+            with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
+                "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ):
+                result = scan_directory(root, ScanOptions(changed_only=True))
+
+        self.assertEqual(result.skipped_counts.get("symlink_change"), 1)
+        self.assertEqual(result.skipped_paths_by_reason["symlink_change"], ("link.txt",))
 
     def test_changed_only_unborn_head_uses_ref_state_not_error_text(self):
         with tempfile.TemporaryDirectory() as temp:

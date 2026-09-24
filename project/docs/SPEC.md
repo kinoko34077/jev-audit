@@ -11,12 +11,16 @@ optional, but it wraps the same required Jev-backed Audit Core when enabled.
 
 ## Acceptance
 
-1. Existing CLI and MCP behavior remains unchanged.
+1. Existing CLI behavior and in-root MCP behavior remain unchanged; MCP rejects
+   paths outside its configured allowed root by default.
 2. Audit Core remains independent from KiNoTch Base and Runtime.
 3. `knt doctor` validates the local Project Overlay and Base.
 4. `knt verify` reaches the existing Python test suite.
-5. Optional Runtime behavior remains opt-in while non-empty audits still use
+5. Runtime behavior requires explicit opt-in while non-empty audits still use
    the same Jev gateway and deterministic aggregation.
+6. Bundled profiles, Git metadata, changed non-file entries, provider response
+   semantics, MCP path scope, and report provenance fail closed at their
+   respective boundaries.
 
 ## Ownership boundary
 

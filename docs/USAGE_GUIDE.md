@@ -89,6 +89,8 @@ signals と skipped
 
 `reason : risk=82% via=spec_mismatch at batch #18`なら、まずbatch #18のpathsを開き、仕様と実装のどの記述を比較できるかを確認します。`skipped`はJevが見ていない範囲の手掛かりです。
 
+JSON reportには`coverage`、`truncated_paths`、`skipped_paths_by_reason`、`provenance`も含まれます。`provenance`にはtool version、resolved model、profile hash、scan条件、Git HEAD SHAが入り、同じ条件での再監査や結果比較に使えます。
+
 ## 5. 日常運用とfull scan
 
 通常の開発では、Git repositoryのrootで変更ファイルを監査します。
@@ -97,11 +99,13 @@ signals と skipped
 jev-audit . --changed-only
 ```
 
-`--changed-only`はGitのHEADとの差分と、除外されていない未追跡ファイルを対象にします。削除済みファイルはパスを検出しますが、削除前の内容は監査できません。
+`--changed-only`はGitのHEADとの差分と、除外されていない未追跡ファイルを対象にします。削除済みファイルはパスを検出しますが、削除前の内容は監査できません。clean no-opやskip-onlyのようにJev requestを発行しない結果では、CLIもAPI keyを要求しません。
 
 変更がないcleanなrepositoryではno-opの`clear`レポートを返します。Jev requestは発行せず、CLIのexit codeは0です。変更はあるものの全ファイルがsensitive、binary、lock、generatedなどでskipされた場合は、Jev requestなしの`unknown`レポートを返します。これは実行失敗ではなく、監査可能な本文がなかったことを示します。
 
 HEADがまだない新規repositoryでは、現在の追跡対象と除外されていない未追跡ファイルを候補にするfallbackがあります。この場合、通常の差分監査より広い範囲が選ばれることがあります。
+
+Git metadataが存在するのにroot判定や候補列挙へ失敗した場合は、安全のためdirectory walkへfallbackせずエラーになります。変更対象がsymlinkやsubmodule pointerだけの場合も、`skipped_paths_by_reason`へ残り、clear no-opではなく`unknown`になります。
 
 対象を変更範囲に絞れるため、通常はfull scanよりinput tokenや無関係なnoiseを抑えられます。また、今回一緒に変更した仕様・実装・test・設定を同じ対象集合に含めやすく、変更箇所に関連するcontextへ判断を集中しやすくなります。ただし、それらが同じbatchに入る保証はありません。
 
@@ -119,6 +123,7 @@ jev-audit
 - `--changed-only`は、指定path自体がGit repositoryのrootである必要があります。`jev-audit src --changed-only`のような指定はできません。
 - `jev-audit src`のようなfocused scanは通常のdirectory walkです。この場合、Gitのindexや`.gitignore`による候補絞り込みは使われません。scannerが定めた除外は引き続き適用されます。
 - Gitを使えない場合や対象pathがrepository rootでない場合のfull scanもdirectory walkになり、`.gitignore`は適用されません。
+- Git metadata（`.git` directoryまたはworktree file）があるpathでGit判定に失敗した場合は、上記のdirectory walk fallbackを行いません。
 
 ## 6. 判断精度を上げるためのcontext設計
 
@@ -210,7 +215,7 @@ Jev modelの既定値は`jev-1.13.0`です。`TYPESAFE_DEFAULT_MODEL`またはCL
 
 ## 8. custom profileと閾値
 
-bundled profileは`development`と`generic`です。profileは主に`local_status`の監査規則とcriteriaを指定します。一方、`risk`を構成する`concrete_issue`、`spec_mismatch`、`regression_risk`の3つのNoul質問は固定です。custom profileへ独自ruleを追加しても、そのrule専用のrisk scoreが作られるわけではありません。
+bundled profileは`development`と`generic`です。profileは主に`local_status`の監査規則とcriteriaを指定します。一方、`risk`を構成する`concrete_issue`、`spec_mismatch`、`regression_risk`の3つのNoul質問は固定です。custom profileへ独自ruleを追加しても、そのrule専用のrisk scoreが作られるわけではありません。bundled profile名はパッケージ内の正本が優先され、custom profileは明示した`.json` pathだけが読み込まれます。profileのschema異常は入力エラーとして停止します。
 
 custom profileを作る場合は、development、docs consistency、release readinessなど目的を絞ります。抽象的なruleを大量に詰めても精度向上は保証されません。既存profileで足りるなら増やす必要はありません。
 
@@ -234,13 +239,15 @@ status・reason・trigger batch・pathsを確認
 
 YELLOWはrisk値だけでなく、actionableを理由に出る場合もあります。status triggerのbatchとpathsを見て、必要なファイルだけをLLMへ渡してください。監査後にrepository全体をLLMへ再送すると、一次スクリーニングでcontextを絞る利点が小さくなります。
 
-MCPから使う場合、日常の変更監査では`audit_directory`へrepository rootの絶対pathと`changed_only: true`を明示するのが確実です。結果を受け取った後も、CLIと同じ順序でstatus、reason、batch、pathsを確認し、必要な範囲を詳しく読みます。毎ターンfull scanする必要はありません。
+MCPから使う場合、日常の変更監査では`audit_directory`へallowed root配下のrepository root絶対pathと`changed_only: true`を明示するのが確実です。既定の許可範囲は`JEV_AUDIT_ALLOWED_ROOT`、`CLAUDE_PROJECT_DIR`、serverのcurrent directoryの順で決まり、`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定した場合だけ範囲制限を外します。MCP callerがfile size、batch size、workersを過大に指定してもhard capで拒否します。結果を受け取った後も、CLIと同じ順序でstatus、reason、batch、pathsを確認し、必要な範囲を詳しく読みます。毎ターンfull scanする必要はありません。
 
 ## 10. セキュリティと外部送信
 
 監査対象として読み込まれたテキストのpathと内容は、Jevを呼び出すため外部のTypeSafe APIへ送信されます。外部送信が許可されているrepositoryだけで使用してください。機密repositoryに使用できるかは、組織の規則と利用中の契約を確認して判断します。詳細は[TypeSafe AI Privacy Policy](https://typesafe.ai/legal/privacy-policy)や[Terms of Use](https://typesafe.ai/legal/terms)の現行版を確認してください。
 
 `TYPESAFE_LOG_LEVEL=debug`やTypeSafe SDK loggerのDEBUGを有効にすると、SDKのwire loggingがrequest bodyをログへ出し、監査対象source本文がローカルログやログ収集基盤へ残る可能性があります。機密性のある監査ではDEBUG loggingを無効にしてください。
+
+gatewayは`local_status`の4 probability key、choice、有限値、0〜1範囲、合計1を検証し、3つのNoulも有限な0〜1値であることを確認します。providerが型だけ整った不完全な応答を返した場合はfail-closedで監査を失敗させ、GREENへ集約しません。
 
 scannerは次の名前・拡張子のファイルを既定で除外します。
 
@@ -253,6 +260,8 @@ scannerは次の名前・拡張子のファイルを既定で除外します。
 この仕組みはファイル名・拡張子による除外で、完全なDLPではありません。例えば`config.py`や通常のJSON・ソースファイルに直接書かれたAPI keyは監査対象になり得ます。`.gitignore`等の標準除外規則が未追跡ファイルの候補除外に使われるのも、Git repository rootでの走査時に限られます。追跡済みファイルは`.gitignore`に追加しただけでは候補から外れません。
 
 prompt injectionへの対策の一つとして、全4判断にはファイル本文内の命令文を監査対象データとして扱い、監査指示を変更する命令に従わないよう指示しています。ただし、adversarialな本文が意味判断へ影響しない保証ではなく、security scannerの代替にもなりません。
+
+`regression_risk`はchanged-onlyでも現在渡された本文から判断します。before/afterのdiff hunkをJevへ直接渡す仕様ではないため、変更前後の意味比較を完全に代替するものではありません。
 
 ## 11. 実行時間とtoken効率
 

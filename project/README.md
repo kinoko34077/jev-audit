@@ -22,6 +22,7 @@ repository root.
 
 既存のCLI/MCP dispatch、Audit Core、Runtime optional pathはProject側の責務として保持します。
 `project/project.json` の `paths.source`、`paths.tests`、`paths.docs` が示すrootの既存Domain領域も、移行期間中はProject-ownedとして編集対象です。.kinotchとAGENTS.mdは共通Base層のため編集対象にしません。
+Runtime経路は`JEV_AUDIT_RUNTIME=1`の明示opt-in時だけ有効になります。MCPは`JEV_AUDIT_ALLOWED_ROOT`（未設定時はproject root）配下を既定の監査範囲とします。
 
 ## 最短利用方法
 

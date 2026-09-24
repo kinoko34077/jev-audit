@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -17,6 +17,8 @@ class AuditProfile:
     description: str
     rules: tuple[AuditRule, ...]
     status_criteria: dict[str, str]
+    source: str = ""
+    source_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class ScanResult:
     skipped_counts: dict[str, int]
     skipped_sensitive_paths: tuple[str, ...]
     git: dict[str, Any]
+    skipped_paths_by_reason: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,10 @@ class AuditReport:
     git: dict[str, Any]
     batch_audits: tuple[BatchAudit, ...]
     aggregate: dict[str, Any]
+    truncated_paths: tuple[str, ...] = ()
+    skipped_paths_by_reason: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    coverage: dict[str, Any] = field(default_factory=dict)
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

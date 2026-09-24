@@ -84,6 +84,38 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("unknown= 20.0%", text)
         self.assertIn("deleted file contents were not available to audit", text)
 
+    def test_report_displays_coverage_and_provenance_summary(self):
+        report = AuditReport(
+            root="C:/repo",
+            profile="development",
+            files_scanned=1,
+            batches=1,
+            skipped_counts={"binary_or_unknown_encoding": 1},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": True, "deleted_paths": ()},
+            batch_audits=(),
+            aggregate={"overall": {"status": "unknown"}},
+            truncated_paths=("large.py",),
+            coverage={
+                "sent_chars": 50,
+                "original_chars": 100,
+                "char_coverage": 0.5,
+                "files_truncated": 1,
+                "files_skipped": 1,
+            },
+            provenance={
+                "tool_version": "0.2.9",
+                "resolved_model": "jev-1.13.0",
+                "git_head_sha": "abc123",
+            },
+        )
+
+        text = format_report(report)
+        self.assertIn("coverage: chars=50/100 (50.0%)", text)
+        self.assertIn("truncated=1", text)
+        self.assertIn("skipped=1", text)
+        self.assertIn("provenance: tool=0.2.9 model=jev-1.13.0 git=abc123", text)
+
 
 if __name__ == "__main__":
     unittest.main()

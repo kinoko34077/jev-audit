@@ -58,9 +58,15 @@ class MCPPathResolutionTests(unittest.TestCase):
         cls.mod = _load_module()
 
     def test_explicit_path_has_priority(self):
-        with TemporaryDirectory() as explicit, TemporaryDirectory() as claude:
-            with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": claude}, clear=False):
-                self.assertEqual(self.mod._resolve_audit_path(explicit), Path(explicit).resolve())
+        with TemporaryDirectory() as allowed, TemporaryDirectory() as claude:
+            explicit = Path(allowed) / "workspace"
+            explicit.mkdir()
+            with patch.dict(
+                os.environ,
+                {"JEV_AUDIT_ALLOWED_ROOT": allowed, "CLAUDE_PROJECT_DIR": claude},
+                clear=False,
+            ):
+                self.assertEqual(self.mod._resolve_audit_path(str(explicit)), explicit.resolve())
 
     def test_uses_claude_project_dir_when_path_omitted(self):
         with TemporaryDirectory() as claude:
@@ -84,6 +90,30 @@ class MCPPathResolutionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.mod._resolve_audit_path(str(file_path))
 
+    def test_rejects_path_outside_allowed_root(self):
+        with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
+            with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": allowed}, clear=False):
+                with self.assertRaisesRegex(ValueError, "allowed root"):
+                    self.mod._resolve_audit_path(outside)
+
+    def test_explicit_any_path_opt_out_is_required_for_outside_root(self):
+        with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
+            with patch.dict(
+                os.environ,
+                {"JEV_AUDIT_ALLOWED_ROOT": allowed, "JEV_AUDIT_ALLOW_ANY_PATH": "1"},
+                clear=False,
+            ):
+                self.assertEqual(self.mod._resolve_audit_path(outside), Path(outside).resolve())
+
+    def test_mcp_limits_have_hard_caps(self):
+        tool = self.mod.mcp.tools["audit_directory"]
+        with TemporaryDirectory() as root:
+            with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": root}, clear=False):
+                with self.assertRaisesRegex(ValueError, "max_file_chars"):
+                    tool(path=root, max_file_chars=self.mod.MCP_MAX_FILE_CHARS + 1)
+                with self.assertRaisesRegex(ValueError, "workers"):
+                    tool(path=root, workers=self.mod.MCP_MAX_WORKERS + 1)
+
     def test_server_instructions_tell_client_to_pass_workspace(self):
         instructions = self.mod.mcp.kwargs.get("instructions", "")
         self.assertIn("workspace/repository absolute path", instructions)
@@ -103,7 +133,8 @@ class MCPPathResolutionTests(unittest.TestCase):
 
             tool = self.mod.mcp.tools["audit_directory"]
             with patch.object(self.mod, "run_audit", fake_run):
-                result = tool(path=root, profile="generic", changed_only=True)
+                with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": root}, clear=False):
+                    result = tool(path=root, profile="generic", changed_only=True)
 
             self.assertEqual(result, {"ok": True})
             self.assertEqual(captured["path"], Path(root).resolve())

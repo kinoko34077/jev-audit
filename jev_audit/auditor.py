@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 import time
 from typing import Any
 
+from . import __version__
 from .aggregate import aggregate_batches
 from .batching import make_batches
-from .jev_gateway import audit_with_jev
+from .jev_gateway import _resolve_model, audit_with_jev
 from .models import AuditProfile, AuditReport, Batch, BatchAudit
 from .profiles import load_profile
 from .scanner import ScanOptions, scan_directory
@@ -42,6 +43,105 @@ def _audit_one(
     )
 
 
+def _audit_batches(
+    batches: tuple[Batch, ...],
+    profile: AuditProfile,
+    model: str | None,
+    workers: int,
+) -> tuple[BatchAudit, ...]:
+    """Audit with at most ``workers`` requests in flight at any time."""
+    if workers <= 1:
+        return tuple(_audit_one(batch, profile, model) for batch in batches)
+
+    executor = ThreadPoolExecutor(max_workers=workers)
+    pending: dict[Any, Batch] = {}
+    audits: list[BatchAudit] = []
+    iterator = iter(batches)
+
+    def submit_next() -> bool:
+        try:
+            batch = next(iterator)
+        except StopIteration:
+            return False
+        pending[executor.submit(_audit_one, batch, profile, model)] = batch
+        return True
+
+    try:
+        for _ in range(min(workers, len(batches))):
+            submit_next()
+
+        while pending:
+            done, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)
+            completed_count = len(done)
+            first_error: BaseException | None = None
+            for future in done:
+                pending.pop(future)
+                try:
+                    audits.append(future.result())
+                except BaseException as exc:
+                    first_error = first_error or exc
+
+            if first_error is not None:
+                for future in pending:
+                    future.cancel()
+                raise first_error
+
+            for _ in range(completed_count):
+                if not submit_next():
+                    break
+    except BaseException:
+        for future in pending:
+            future.cancel()
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+
+    executor.shutdown(wait=True)
+    audits.sort(key=lambda item: item.index)
+    return tuple(audits)
+
+
+def _coverage(scan: Any) -> dict[str, Any]:
+    sent_chars = sum(item.chars for item in scan.files)
+    original_chars = sum(item.original_chars for item in scan.files)
+    files_skipped = sum(scan.skipped_counts.values())
+    return {
+        "files_scanned": len(scan.files),
+        "files_skipped": files_skipped,
+        "files_considered": len(scan.files) + files_skipped,
+        "files_truncated": sum(1 for item in scan.files if item.truncated),
+        "sent_chars": sent_chars,
+        "original_chars": original_chars,
+        "char_coverage": sent_chars / original_chars if original_chars else None,
+    }
+
+
+def _provenance(
+    profile: AuditProfile,
+    scan: Any,
+    *,
+    changed_only: bool,
+    max_file_chars: int,
+    max_file_bytes: int,
+    batch_chars: int,
+    workers: int,
+    requested_model: str | None,
+) -> dict[str, Any]:
+    return {
+        "tool_version": __version__,
+        "requested_model": requested_model,
+        "resolved_model": _resolve_model(requested_model),
+        "profile_name": profile.name,
+        "profile_source": profile.source,
+        "profile_sha256": profile.source_sha256,
+        "changed_only": changed_only,
+        "max_file_chars": max_file_chars,
+        "max_file_bytes": max_file_bytes,
+        "batch_chars": batch_chars,
+        "workers": workers,
+        "git_head_sha": scan.git.get("head_sha"),
+    }
+
+
 def audit_directory(
     path: str | Path = ".",
     *,
@@ -72,6 +172,18 @@ def audit_directory(
             max_file_bytes=max_file_bytes,
         ),
     )
+    coverage = _coverage(scan)
+    provenance = _provenance(
+        profile_obj,
+        scan,
+        changed_only=changed_only,
+        max_file_chars=max_file_chars,
+        max_file_bytes=max_file_bytes,
+        batch_chars=batch_chars,
+        workers=workers,
+        requested_model=model,
+    )
+    truncated_paths = tuple(item.path for item in scan.files if item.truncated)
 
     if not scan.files:
         if not changed_only:
@@ -91,33 +203,16 @@ def audit_directory(
             git=scan.git,
             batch_audits=(),
             aggregate=aggregate,
+            truncated_paths=truncated_paths,
+            skipped_paths_by_reason=scan.skipped_paths_by_reason,
+            coverage=coverage,
+            provenance=provenance,
         )
 
     batches = make_batches(scan.files, batch_chars)
     workers = max(1, min(workers, max(1, len(batches))))
 
-    audits: list[BatchAudit] = []
-    if workers == 1:
-        audits = [
-            _audit_one(batch, profile_obj, model)
-            for batch in batches
-        ]
-    else:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            future_map = {
-                pool.submit(
-                    _audit_one,
-                    batch,
-                    profile_obj,
-                    model,
-                ): batch.index
-                for batch in batches
-            }
-            for future in as_completed(future_map):
-                audits.append(future.result())
-        audits.sort(key=lambda item: item.index)
-
-    batch_audits = tuple(audits)
+    batch_audits = _audit_batches(tuple(batches), profile_obj, model, workers)
     aggregate = aggregate_batches(batch_audits)
     aggregate["wall_clock_ms"] = (time.perf_counter() - started) * 1000.0
 
@@ -131,4 +226,8 @@ def audit_directory(
         git=scan.git,
         batch_audits=batch_audits,
         aggregate=aggregate,
+        truncated_paths=truncated_paths,
+        skipped_paths_by_reason=scan.skipped_paths_by_reason,
+        coverage=coverage,
+        provenance=provenance,
     )

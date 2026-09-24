@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import time
 from typing import Any
@@ -26,6 +27,29 @@ LOCAL_NOULS = {
 }
 
 DEFAULT_JEV_MODEL = "jev-1.13.0"
+STATUS_KEYS = frozenset({"clear", "review", "rework", "unknown"})
+
+
+def _probability(value: Any, label: str) -> float:
+    try:
+        converted = float(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Jev response {label} must be a finite probability") from exc
+    if not math.isfinite(converted) or not 0.0 <= converted <= 1.0:
+        raise RuntimeError(f"Jev response {label} must be a finite probability in [0, 1]")
+    return converted
+
+
+def _status_probabilities(answer: Any) -> dict[str, float]:
+    raw = getattr(answer, "probabilities", None)
+    if not isinstance(raw, dict):
+        raise RuntimeError("Jev response local_status probabilities must be an object")
+    converted = {str(key): _probability(value, f"probabilities[{key!r}]") for key, value in raw.items()}
+    if set(converted) != STATUS_KEYS:
+        raise RuntimeError("Jev response local_status probabilities must contain exactly clear/review/rework/unknown")
+    if not math.isclose(sum(converted.values()), 1.0, rel_tol=1e-6, abs_tol=1e-6):
+        raise RuntimeError("Jev response local_status probabilities must sum to 1")
+    return converted
 
 
 def _resolve_model(model: str | None) -> str:
@@ -77,15 +101,30 @@ def _build_questions(profile: AuditProfile) -> dict[str, Any]:
 
 
 def _serialize_response(response: Any, elapsed_ms: float) -> JevResult:
+    raw_choices = getattr(response, "choices", None)
+    raw_nouls = getattr(response, "nouls", None)
+    if not isinstance(raw_choices, dict) or not isinstance(raw_nouls, dict):
+        raise RuntimeError("Jev response choices and nouls must be objects")
+
     choices: dict[str, dict[str, Any]] = {}
-    for name, answer in response.choices.items():
+    for name, answer in raw_choices.items():
+        if name != "local_status":
+            raise RuntimeError(f"Jev response contains unexpected choice: {name!r}")
+        probabilities = _status_probabilities(answer)
+        choice = str(getattr(answer, "choice", ""))
+        if name == "local_status" and choice not in STATUS_KEYS:
+            raise RuntimeError(f"Jev response local_status choice is invalid: {choice!r}")
+        confidence = _probability(getattr(answer, "confidence", 0.0), "confidence")
         choices[name] = {
-            "choice": answer.choice,
-            "confidence": float(answer.confidence),
-            "probabilities": {str(k): float(v) for k, v in answer.probabilities.items()},
+            "choice": choice,
+            "confidence": confidence,
+            "probabilities": probabilities,
         }
 
-    nouls = {name: float(answer.noul) for name, answer in response.nouls.items()}
+    nouls = {
+        name: _probability(getattr(answer, "noul", None), f"noul[{name!r}]")
+        for name, answer in raw_nouls.items()
+    }
 
     missing = []
     if "local_status" not in choices:
@@ -93,13 +132,19 @@ def _serialize_response(response: Any, elapsed_ms: float) -> JevResult:
     missing.extend(sorted(set(LOCAL_NOULS) - set(nouls)))
     if missing:
         raise RuntimeError("Jev response missing required answers: " + ", ".join(missing))
+    if set(nouls) != set(LOCAL_NOULS):
+        raise RuntimeError("Jev response nouls must contain exactly the required signals")
 
+    usage_obj = getattr(response, "usage", None)
     usage = {
-        "input_tokens": getattr(response.usage, "input_tokens", None),
-        "output_tokens": getattr(response.usage, "output_tokens", None),
+        "input_tokens": getattr(usage_obj, "input_tokens", None),
+        "output_tokens": getattr(usage_obj, "output_tokens", None),
     }
+    response_model = str(getattr(response, "model", "")).strip()
+    if not response_model:
+        raise RuntimeError("Jev response model must be a non-empty string")
     return JevResult(
-        model=str(response.model),
+        model=response_model,
         elapsed_ms=elapsed_ms,
         usage=usage,
         choices=choices,

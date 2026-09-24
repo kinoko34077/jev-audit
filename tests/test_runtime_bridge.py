@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -68,6 +69,13 @@ def _runtime():
 
 
 class RuntimeBridgeTests(unittest.TestCase):
+    def test_runtime_requires_explicit_opt_in(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(runtime_bridge._runtime_opted_in())
+            self.assertIsNone(runtime_bridge._load_runtime())
+        with patch.dict(os.environ, {"JEV_AUDIT_RUNTIME": "1"}, clear=True):
+            self.assertTrue(runtime_bridge._runtime_opted_in())
+
     def test_without_runtime_it_uses_the_existing_audit_core(self):
         expected = object()
         with patch.object(runtime_bridge, "_load_runtime", return_value=None), patch.object(
@@ -187,7 +195,9 @@ class RuntimeBridgeTests(unittest.TestCase):
     )
     def test_actual_runtime_kernel_executes_the_audit_action(self):
         expected = object()
-        with patch.object(runtime_bridge, "_legacy_audit", return_value=expected):
+        with patch.object(runtime_bridge, "_legacy_audit", return_value=expected), patch.dict(
+            os.environ, {"JEV_AUDIT_RUNTIME": "1"}, clear=False
+        ):
             actual = runtime_bridge.run_audit(Path("repo"), profile="generic", workers=1)
 
         self.assertIs(expected, actual)

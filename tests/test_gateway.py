@@ -1,3 +1,4 @@
+import math
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -43,7 +44,12 @@ class GatewayTests(unittest.TestCase):
                         "local_status": SimpleNamespace(
                             choice="clear",
                             confidence=1.0,
-                            probabilities={"clear": 1.0},
+                            probabilities={
+                                "clear": 1.0,
+                                "review": 0.0,
+                                "rework": 0.0,
+                                "unknown": 0.0,
+                            },
                         )
                     },
                     nouls={
@@ -98,6 +104,96 @@ class GatewayTests(unittest.TestCase):
             model="jev-test",
         )
         with self.assertRaises(RuntimeError):
+            jev_gateway._serialize_response(response, 1.0)
+
+    def test_semantically_incomplete_status_probabilities_are_rejected(self):
+        response = SimpleNamespace(
+            choices={
+                "local_status": SimpleNamespace(
+                    choice="clear", confidence=1.0, probabilities={"clear": 1.0}
+                )
+            },
+            nouls={
+                "concrete_issue": SimpleNamespace(noul=0.0),
+                "spec_mismatch": SimpleNamespace(noul=0.0),
+                "regression_risk": SimpleNamespace(noul=0.0),
+            },
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+            model="jev-test",
+        )
+        with self.assertRaisesRegex(RuntimeError, "probabilities"):
+            jev_gateway._serialize_response(response, 1.0)
+
+    def test_invalid_choice_and_probability_range_are_rejected(self):
+        response = SimpleNamespace(
+            choices={
+                "local_status": SimpleNamespace(
+                    choice="maybe",
+                    confidence=1.0,
+                    probabilities={
+                        "clear": 0.25,
+                        "review": 0.25,
+                        "rework": 0.25,
+                        "unknown": 0.25,
+                    },
+                )
+            },
+            nouls={
+                "concrete_issue": SimpleNamespace(noul=0.0),
+                "spec_mismatch": SimpleNamespace(noul=1.2),
+                "regression_risk": SimpleNamespace(noul=0.0),
+            },
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+            model="jev-test",
+        )
+        with self.assertRaisesRegex(RuntimeError, "choice"):
+            jev_gateway._serialize_response(response, 1.0)
+
+    def test_non_normalized_and_non_finite_probabilities_are_rejected(self):
+        for probabilities in (
+            {"clear": 0.4, "review": 0.2, "rework": 0.2, "unknown": 0.1},
+            {"clear": math.nan, "review": 0.0, "rework": 0.0, "unknown": 1.0},
+        ):
+            response = SimpleNamespace(
+                choices={
+                    "local_status": SimpleNamespace(
+                        choice="clear", confidence=1.0, probabilities=probabilities
+                    )
+                },
+                nouls={
+                    "concrete_issue": SimpleNamespace(noul=0.0),
+                    "spec_mismatch": SimpleNamespace(noul=0.0),
+                    "regression_risk": SimpleNamespace(noul=0.0),
+                },
+                usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                model="jev-test",
+            )
+            with self.assertRaisesRegex(RuntimeError, "probabilities"):
+                jev_gateway._serialize_response(response, 1.0)
+
+    def test_noul_probability_range_is_rejected(self):
+        response = SimpleNamespace(
+            choices={
+                "local_status": SimpleNamespace(
+                    choice="clear",
+                    confidence=1.0,
+                    probabilities={
+                        "clear": 1.0,
+                        "review": 0.0,
+                        "rework": 0.0,
+                        "unknown": 0.0,
+                    },
+                )
+            },
+            nouls={
+                "concrete_issue": SimpleNamespace(noul=0.0),
+                "spec_mismatch": SimpleNamespace(noul=math.inf),
+                "regression_risk": SimpleNamespace(noul=0.0),
+            },
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+            model="jev-test",
+        )
+        with self.assertRaisesRegex(RuntimeError, "noul"):
             jev_gateway._serialize_response(response, 1.0)
 
 

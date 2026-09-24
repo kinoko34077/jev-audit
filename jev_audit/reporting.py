@@ -62,6 +62,24 @@ def format_report(report: AuditReport) -> str:
     lines.append(f"batches: {report.batches}")
     lines.append(f"model  : {report.model}")
 
+    coverage = report.coverage
+    if coverage:
+        ratio = coverage.get("char_coverage")
+        ratio_text = "-" if ratio is None else f"{float(ratio) * 100:.1f}%"
+        lines.append(
+            f"coverage: chars={int(coverage.get('sent_chars', 0))}/{int(coverage.get('original_chars', 0))} "
+            f"({ratio_text}) truncated={int(coverage.get('files_truncated', 0))} "
+            f"skipped={int(coverage.get('files_skipped', 0))}"
+        )
+
+    provenance = report.provenance
+    if provenance:
+        lines.append(
+            f"provenance: tool={provenance.get('tool_version', 'unknown')} "
+            f"model={provenance.get('resolved_model', 'unknown')} "
+            f"git={provenance.get('git_head_sha') or 'unknown'}"
+        )
+
     usage = aggregate.get("usage", {})
     lines.append(
         f"tokens : input={int(usage.get('input_tokens', 0))} "

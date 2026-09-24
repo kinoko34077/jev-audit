@@ -14,6 +14,10 @@ Last verified: 2026-09-24 — Project integration fixes and verification
 - Existing jev-audit CLI, MCP, Audit Core, and optional Runtime bridge retained
 - Existing Domain files remain at their original paths; no bulk move was performed
 - Changed-only skip-only sets return a normal `unknown` report without a Jev call
+- Profile, Git, provider-response, MCP scope, Runtime opt-in, coverage, and
+  provenance boundaries are validated fail-closed
+- CLI clean changed-only no-op does not require an API key because no Jev request
+  is issued
 
 ## Default state
 
@@ -26,6 +30,7 @@ Last verified: 2026-09-24 — Project integration fixes and verification
 - The Base workflow is an additional common verification gate; the existing
   matrix workflow remains Project-owned.
 - Optional `kinotch-runtime` installation is not part of the default setup.
+- Runtime execution also requires explicit `JEV_AUDIT_RUNTIME=1` opt-in.
 - Provider credentials and external API behavior remain outside the Base layer.
 
 ## Next work

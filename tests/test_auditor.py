@@ -1,10 +1,11 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from jev_audit.auditor import _batch_state, audit_directory
-from jev_audit.models import Batch, FileSnapshot, JevResult, ScanResult
+from jev_audit.models import Batch, BatchAudit, FileSnapshot, JevResult, ScanResult
 
 
 class AuditorTests(unittest.TestCase):
@@ -131,6 +132,125 @@ class AuditorTests(unittest.TestCase):
             audit_directory(".", workers=1, model="jev-custom")
 
         self.assertEqual(gateway.call_args.kwargs["model"], "jev-custom")
+
+    def test_batch_failure_stops_submitting_after_inflight_window(self):
+        files = tuple(
+            FileSnapshot(
+                path=f"file-{index}.py",
+                content="x" * 100,
+                chars=100,
+                original_chars=100,
+                truncated=False,
+            )
+            for index in range(1, 6)
+        )
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=files,
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": False, "deleted_paths": ()},
+        )
+        started: list[int] = []
+        release = threading.Event()
+
+        def fake_audit_one(batch, _profile, _model):
+            started.append(batch.index)
+            if batch.index == 1:
+                release.set()
+                raise RuntimeError("provider failed")
+            release.wait(1.0)
+            return BatchAudit(
+                index=batch.index,
+                paths=tuple(batch.paths),
+                chars=batch.chars,
+                result=JevResult(
+                    model="jev-test",
+                    elapsed_ms=1.0,
+                    usage={"input_tokens": 1, "output_tokens": 1},
+                    choices={
+                        "local_status": {
+                            "choice": "clear",
+                            "probabilities": {
+                                "clear": 1.0,
+                                "review": 0.0,
+                                "rework": 0.0,
+                                "unknown": 0.0,
+                            },
+                        }
+                    },
+                    nouls={
+                        "concrete_issue": 0.0,
+                        "spec_mismatch": 0.0,
+                        "regression_risk": 0.0,
+                    },
+                ),
+            )
+
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor._audit_one", side_effect=fake_audit_one
+        ):
+            with self.assertRaisesRegex(RuntimeError, "provider failed"):
+                audit_directory(".", batch_chars=160, workers=2)
+
+        self.assertLessEqual(len(started), 2)
+
+    def test_report_preserves_coverage_and_provenance(self):
+        files = (
+            FileSnapshot(
+                path="truncated.py",
+                content="short",
+                chars=5,
+                original_chars=10,
+                truncated=True,
+            ),
+            FileSnapshot(
+                path="full.py",
+                content="full",
+                chars=4,
+                original_chars=4,
+                truncated=False,
+            ),
+        )
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=files,
+            skipped_counts={"binary_or_unknown_encoding": 1},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": True, "deleted_paths": (), "head_sha": "abc123"},
+            skipped_paths_by_reason={"binary_or_unknown_encoding": ("blob.bin",)},
+        )
+        result = JevResult(
+            model="jev-custom",
+            elapsed_ms=1.0,
+            usage={"input_tokens": 1, "output_tokens": 1},
+            choices={
+                "local_status": {
+                    "probabilities": {
+                        "clear": 1.0,
+                        "review": 0.0,
+                        "rework": 0.0,
+                        "unknown": 0.0,
+                    }
+                }
+            },
+            nouls={"concrete_issue": 0.0, "spec_mismatch": 0.0, "regression_risk": 0.0},
+        )
+        batch_audit = BatchAudit(index=1, paths=("truncated.py", "full.py"), chars=9, result=result)
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor._audit_one", return_value=batch_audit
+        ):
+            report = audit_directory(".", model="jev-custom", workers=1)
+
+        self.assertEqual(report.truncated_paths, ("truncated.py",))
+        self.assertEqual(report.skipped_paths_by_reason["binary_or_unknown_encoding"], ("blob.bin",))
+        self.assertEqual(report.coverage["sent_chars"], 9)
+        self.assertEqual(report.coverage["original_chars"], 14)
+        self.assertEqual(report.coverage["files_skipped"], 1)
+        self.assertEqual(report.provenance["requested_model"], "jev-custom")
+        self.assertEqual(report.provenance["resolved_model"], "jev-custom")
+        self.assertEqual(report.provenance["git_head_sha"], "abc123")
+        self.assertTrue(report.provenance["profile_sha256"])
 
 
 if __name__ == "__main__":

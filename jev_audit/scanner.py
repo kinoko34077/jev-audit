@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -102,6 +102,16 @@ def _is_git_root(root: Path) -> bool:
         return False
 
 
+def _git_metadata_present(root: Path) -> bool:
+    """Return true for both normal .git directories and worktree .git files."""
+    try:
+        return os.path.lexists(str(root / ".git"))
+    except OSError:
+        # An inaccessible metadata path is itself evidence that we must not
+        # silently widen the scan to an unrestricted directory walk.
+        return True
+
+
 def _git_failure(operation: str, result: subprocess.CompletedProcess[str]) -> RuntimeError:
     detail = (result.stderr or result.stdout or "unknown Git error").strip()
     return RuntimeError(f"{operation} failed: {detail}")
@@ -130,15 +140,57 @@ def _git_head_exists(root: Path) -> bool:
     raise _git_failure("git symbolic-ref HEAD", symbolic)
 
 
-def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[str, ...]] | None:
+def _git_head_sha(root: Path) -> str | None:
+    result = _run_git(root, "rev-parse", "--verify", "HEAD")
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return value or None
+
+
+def _git_stage_modes(root: Path, names: set[str]) -> dict[str, str]:
+    if not names:
+        return {}
+    result = _run_git(root, "ls-files", "--stage", "--", *sorted(names))
+    if result.returncode != 0:
+        raise _git_failure("git ls-files --stage", result)
+    modes: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        metadata, separator, name = line.partition("\t")
+        if not separator:
+            continue
+        fields = metadata.split()
+        if fields:
+            modes[name] = fields[0]
+    return modes
+
+
+def _git_candidates(
+    root: Path, changed_only: bool
+) -> tuple[list[Path], tuple[str, ...], dict[str, tuple[str, ...]], str | None] | None:
+    if not _git_available():
+        if _git_metadata_present(root):
+            raise RuntimeError(
+                "Git metadata is present but the Git executable is unavailable; refusing unrestricted directory scan"
+            )
+        if changed_only:
+            raise ValueError("--changed-only requires the target path itself to be a Git repository root")
+        return None
+
     if not _is_git_root(root):
+        if _git_metadata_present(root):
+            raise RuntimeError(
+                "Git metadata is present but the repository root could not be verified; refusing unrestricted directory scan"
+            )
         if changed_only:
             raise ValueError("--changed-only requires the target path itself to be a Git repository root")
         return None
 
     deleted_names: set[str] = set()
+    head_exists: bool | None = None
     if changed_only:
-        if not _git_head_exists(root):
+        head_exists = _git_head_exists(root)
+        if not head_exists:
             # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
             listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
             if listed.returncode != 0:
@@ -155,7 +207,7 @@ def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[s
             names = changed_names | set(untracked.stdout.splitlines())
             deleted_names = {
                 name for name in changed_names
-                if name.strip() and not (root / name).exists()
+                if name.strip() and not os.path.lexists(str(root / name))
             }
     else:
         listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
@@ -164,11 +216,29 @@ def _git_candidates(root: Path, changed_only: bool) -> tuple[list[Path], tuple[s
         names = set(listed.stdout.splitlines())
 
     result: list[Path] = []
+    non_regular_names: set[str] = set()
+    skipped_paths: dict[str, list[str]] = defaultdict(list)
     for name in sorted(name for name in names if name.strip()):
         path = root / name
-        if path.is_file() and not path.is_symlink():
+        if path.is_symlink():
+            skipped_paths["symlink_change"].append(name)
+        elif path.is_file():
             result.append(path)
-    return result, tuple(sorted(deleted_names))
+        elif name not in deleted_names:
+            non_regular_names.add(name)
+
+    stage_modes = _git_stage_modes(root, non_regular_names)
+    for name in sorted(non_regular_names):
+        reason = "gitlink_change" if stage_modes.get(name) == "160000" else "non_file_change"
+        skipped_paths[reason].append(name)
+
+    head_sha = None if head_exists is False else _git_head_sha(root)
+    return (
+        result,
+        tuple(sorted(deleted_names)),
+        {reason: tuple(sorted(paths)) for reason, paths in skipped_paths.items()},
+        head_sha,
+    )
 
 
 def _walk_candidates(root: Path) -> Iterable[Path]:
@@ -237,12 +307,19 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
     if git_result is None:
         candidates = sorted(_walk_candidates(root))
         deleted_paths: tuple[str, ...] = ()
+        pre_skipped_paths: dict[str, tuple[str, ...]] = {}
+        head_sha = None
     else:
-        candidates, deleted_paths = git_result
+        candidates, deleted_paths, pre_skipped_paths, head_sha = git_result
 
     skipped = Counter()
+    skipped_paths: dict[str, list[str]] = defaultdict(list)
     if deleted_paths:
         skipped["deleted_change_without_content"] += len(deleted_paths)
+        skipped_paths["deleted_change_without_content"].extend(deleted_paths)
+    for reason, paths in pre_skipped_paths.items():
+        skipped[reason] += len(paths)
+        skipped_paths[reason].extend(paths)
     sensitive_paths: list[str] = []
     snapshots: list[FileSnapshot] = []
 
@@ -256,6 +333,8 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         reason = _skip_reason(path, root, options.max_file_bytes)
         if reason:
             skipped[reason] += 1
+            if reason != "ignored_directory":
+                skipped_paths[reason].append(rel)
             if reason == "sensitive":
                 sensitive_paths.append(rel)
             continue
@@ -264,11 +343,13 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
             raw = path.read_bytes()
         except OSError:
             skipped["unreadable"] += 1
+            skipped_paths["unreadable"].append(rel)
             continue
 
         text = _decode_text(raw)
         if text is None:
             skipped["binary_or_unknown_encoding"] += 1
+            skipped_paths["binary_or_unknown_encoding"].append(rel)
             continue
 
         clipped, truncated = _truncate_text(text, options.max_file_chars)
@@ -287,5 +368,8 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         files=tuple(snapshots),
         skipped_counts=dict(sorted(skipped.items())),
         skipped_sensitive_paths=tuple(sorted(sensitive_paths)),
-        git={"is_git_repo": is_git_repo, "deleted_paths": deleted_paths},
+        git={"is_git_repo": is_git_repo, "deleted_paths": deleted_paths, "head_sha": head_sha},
+        skipped_paths_by_reason={
+            reason: tuple(sorted(paths)) for reason, paths in skipped_paths.items()
+        },
     )

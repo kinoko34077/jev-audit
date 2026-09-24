@@ -18,7 +18,7 @@ TypeSafe AI **Jev** を使って、現在のディレクトリや任意のリポ
 前提:
 
 - Python 3.10+
-- 環境変数 `TYPESAFE_API_KEY` を設定済み
+- Jev requestを行う場合は環境変数 `TYPESAFE_API_KEY` を設定済み（cleanな`--changed-only` no-opは不要）
 - Gitは任意（`--changed-only`使用時のみ必要）
 
 Jev modelは既定で`jev-1.13.0`に固定しています。更新時は
@@ -137,6 +137,8 @@ jev-audit --list-profiles
 jev-audit . --profile C:\rules\my-audit.json
 ```
 
+bundled profile名（`development`、`generic`）は常にパッケージ内の正本を使います。custom profileは明示した`.json` pathだけを読み込み、監査対象repository内の同名ファイルやdirectoryが既定profileを上書きすることはありません。
+
 ## 秘密情報
 
 以下の本文は既定でJevへ送りません。
@@ -148,6 +150,8 @@ jev-audit . --profile C:\rules\my-audit.json
 - `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
 
 対象path自体がGit repository rootで、Gitが利用可能な場合はGitから候補を列挙し、未追跡ファイルには `.gitignore` 等の標準除外規則を適用します。Git未導入環境やrepository内のsubdirectoryを対象にしたfull scanでは通常のdirectory走査になり、`.gitignore`は適用されません。`--changed-only`はGit repository rootでのみ使えます。変更がないcleanなrepositoryではno-opの`clear`を返し、exit 0になります。
+
+Git metadataが存在するのにroot判定や候補列挙に失敗した場合は、`.gitignore`を無視したdirectory walkへfail-openせずエラーで停止します。`--changed-only`でsymlinkやsubmodule pointerだけが変更された場合も、変更をskip情報として残して`UNKNOWN`扱いにします。
 
 これはファイル名・拡張子等による除外で、完全なDLPではありません。ソース内に直接書かれた鍵や機密情報は監査対象になり得ます。外部APIへの送信が認められている範囲で利用してください。`TYPESAFE_LOG_LEVEL=debug`やTypeSafe SDK loggerのDEBUGを有効にすると、request bodyに含まれるsource本文がローカルログやログ収集基盤へ出る可能性があるため、機密性のある監査ではDEBUG loggingを無効にしてください。詳しくは[利用ガイドのセキュリティ節](docs/USAGE_GUIDE.md)を参照してください。
 
@@ -176,6 +180,8 @@ jev-audit-mcp
 
 Codexではactive workspace/repositoryの絶対pathをtool引数 `path` として渡すのが確実です。Claude Codeでは`path`を明示してもよく、省略時は`CLAUDE_PROJECT_DIR`を使用します。CLIとMCPは同じAudit Coreを使用します。
 
+MCPは既定で`JEV_AUDIT_ALLOWED_ROOT`（未設定時は`CLAUDE_PROJECT_DIR`、さらに未設定ならserverのcurrent directory）配下だけを監査します。任意pathを明示的に許可する場合だけ`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定してください。MCPにはfile size、batch size、workersのhard capもあります。
+
 ## KiNoTch Runtime Pilot
 
 The first Runtime Pilot is optional and does not change the default install or
@@ -184,13 +190,13 @@ the shared `repo.audit` Action boundary:
 
 ```powershell
 python -m pip install -e ".[pilot]"
+$env:JEV_AUDIT_RUNTIME = "1"
 ```
 
-When `kinotch_runtime` is importable (for example, after installing the pinned
-Pilot extra), both CLI and MCP call the existing Audit Core through the Runtime
-kernel. When it is not importable, the bridge uses the existing direct Audit
-Core path; installing the extra is not itself the switching condition. This is
-a measurement boundary, not a CLI/MCP Surface Pack. Known audit and provider
+When `JEV_AUDIT_RUNTIME=1` is explicitly set and `kinotch_runtime` is importable,
+both CLI and MCP call the existing Audit Core through the Runtime kernel. Without
+that opt-in, the direct Audit Core path remains active even if the package happens
+to be installed. This is a measurement boundary, not a CLI/MCP Surface Pack. Known audit and provider
 failures retain a structured code, the original message, and exception metadata
 where available; unknown Runtime failures are re-raised for the Runtime
 kernel's `INTERNAL_ERROR` redaction.
@@ -205,6 +211,8 @@ The evaluated live Pilot evidence and remaining Contract boundary are recorded i
 - `local_status`: `clear / review / rework / unknown` の確率分布。`actionable` は `review + rework` で、詳細確認や修正へ回す度合いです。`unknown` は問題の確率ではなく、局所的な判断材料の不足を表します。
 - `elapsed`: 実行開始から終了までのwall-clock時間
 - `reason`: statusの判定条件とbatch。triggerには対象`paths`も含まれます。
+- `coverage`: 送信文字数/元文字数、truncated file数、skip file数。`truncated_paths`と`skipped_paths_by_reason`で対象範囲を復元できます。
+- `provenance`: tool version、resolved model、profile hash、scan条件、Git HEAD SHA。再現性確認に使います。
 - `api work`: 並列Jev requestの処理時間合計であり、実待ち時間ではない
 
 GREENは安全証明ではありません。riskの値は正解率やrepo品質スコアでもありません。いずれのstatusでも、テスト・実操作・詳細レビューを省略する根拠にはなりません。

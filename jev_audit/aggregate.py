@@ -105,8 +105,8 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
     signal_values: dict[str, list[float]] = defaultdict(list)
     total_input = 0
     total_output = 0
-    input_tokens_complete = True
-    output_tokens_complete = True
+    input_tokens_missing_batches = 0
+    output_tokens_missing_batches = 0
     total_latency = 0.0
     ranked_batches: list[dict[str, Any]] = []
 
@@ -119,11 +119,11 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
         if isinstance(input_tokens, int):
             total_input += input_tokens
         else:
-            input_tokens_complete = False
+            input_tokens_missing_batches += 1
         if isinstance(output_tokens, int):
             total_output += output_tokens
         else:
-            output_tokens_complete = False
+            output_tokens_missing_batches += 1
 
         for name in RISK_SIGNALS:
             signal_values[name].append(float(result.nouls.get(name, 0.0)))
@@ -156,6 +156,9 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
     status, status_trigger = _overall_status(ranked_batches)
     overall_risk = float(ranked_batches[0]["risk"]) if ranked_batches else 0.0
 
+    batch_count = len(batch_audits)
+    input_tokens_complete = input_tokens_missing_batches == 0
+    output_tokens_complete = output_tokens_missing_batches == 0
     return {
         "batch_count": len(batch_audits),
         "overall": {
@@ -168,8 +171,20 @@ def aggregate_batches(batch_audits: tuple[BatchAudit, ...]) -> dict[str, Any]:
             for name, values in sorted(signal_values.items())
         },
         "usage": {
-            "input_tokens": total_input if input_tokens_complete or not batch_audits else None,
-            "output_tokens": total_output if output_tokens_complete or not batch_audits else None,
+            "input_tokens": (
+                None
+                if batch_count and input_tokens_missing_batches == batch_count
+                else total_input
+            ),
+            "output_tokens": (
+                None
+                if batch_count and output_tokens_missing_batches == batch_count
+                else total_output
+            ),
+            "input_tokens_complete": input_tokens_complete,
+            "output_tokens_complete": output_tokens_complete,
+            "input_tokens_missing_batches": input_tokens_missing_batches,
+            "output_tokens_missing_batches": output_tokens_missing_batches,
         },
         "total_batch_latency_ms": total_latency,
         "highest_risk_batches": ranked_batches[:10],

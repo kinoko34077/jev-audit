@@ -6,7 +6,6 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
-from typing import Iterable
 
 from .models import FileSnapshot, ScanResult
 
@@ -150,21 +149,56 @@ def _git_head_sha(root: Path) -> str | None:
     return value or None
 
 
-def _git_stage_modes(root: Path, names: set[str]) -> dict[str, str]:
-    if not names:
-        return {}
-    result = _run_git(root, "ls-files", "--stage", "--", *sorted(names))
-    if result.returncode != 0:
-        raise _git_failure("git ls-files --stage", result)
+def _parse_git_nul_paths(output: str) -> list[str]:
+    """Parse Git's NUL-delimited path output without newline ambiguity."""
+    return [part for part in output.split("\0") if part]
+
+
+def _parse_git_stage_modes(output: str) -> dict[str, str]:
+    """Parse ``git ls-files --stage -z`` entries into path-to-mode values."""
     modes: dict[str, str] = {}
-    for line in result.stdout.splitlines():
-        metadata, separator, name = line.partition("\t")
+    for entry in output.split("\0"):
+        if not entry:
+            continue
+        metadata, separator, name = entry.partition("\t")
         if not separator:
             continue
         fields = metadata.split()
         if fields:
             modes[name] = fields[0]
     return modes
+
+
+def _excluded_directory_for_name(name: str) -> str | None:
+    parts = Path(name).as_posix().split("/")
+    for index, part in enumerate(parts[:-1]):
+        if part.lower() in IGNORED_DIRS:
+            return "/".join(parts[: index + 1])
+    return None
+
+
+def _collect_excluded_directories(root: Path) -> tuple[str, ...]:
+    """Discover ignored directories without descending into their contents."""
+    excluded_directories: set[str] = set()
+    for current_root, dirs, _files in os.walk(root):
+        base = Path(current_root)
+        kept_dirs: list[str] = []
+        for directory in dirs:
+            if directory.lower() in IGNORED_DIRS:
+                excluded_directories.add((base / directory).relative_to(root).as_posix())
+            else:
+                kept_dirs.append(directory)
+        dirs[:] = kept_dirs
+    return tuple(sorted(excluded_directories))
+
+
+def _git_stage_modes(root: Path, names: set[str]) -> dict[str, str]:
+    if not names:
+        return {}
+    result = _run_git(root, "ls-files", "--stage", "-z", "--", *sorted(names))
+    if result.returncode != 0:
+        raise _git_failure("git ls-files --stage", result)
+    return _parse_git_stage_modes(result.stdout)
 
 
 def _git_change_by_path(root: Path, names: set[str]) -> dict[str, str]:
@@ -216,6 +250,7 @@ def _git_candidates(
     dict[str, tuple[str, ...]],
     str | None,
     dict[str, str],
+    tuple[str, ...],
 ] | None:
     if not _git_available():
         if _git_metadata_present(root):
@@ -241,33 +276,44 @@ def _git_candidates(
         head_exists = _git_head_exists(root)
         if not head_exists:
             # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
-            listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
+            listed = _run_git(root, "ls-files", "-co", "--exclude-standard", "-z")
             if listed.returncode != 0:
                 raise _git_failure("git ls-files", listed)
-            names = set(listed.stdout.splitlines())
+            names = set(_parse_git_nul_paths(listed.stdout))
         else:
-            changed = _run_git(root, "diff", "--name-only", "HEAD", "--")
+            changed = _run_git(root, "diff", "--name-only", "-z", "HEAD", "--")
             if changed.returncode != 0:
                 raise _git_failure("git diff HEAD", changed)
-            untracked = _run_git(root, "ls-files", "--others", "--exclude-standard")
+            untracked = _run_git(root, "ls-files", "--others", "--exclude-standard", "-z")
             if untracked.returncode != 0:
                 raise _git_failure("git ls-files", untracked)
-            changed_names = set(changed.stdout.splitlines())
-            names = changed_names | set(untracked.stdout.splitlines())
+            changed_names = set(_parse_git_nul_paths(changed.stdout))
+            names = changed_names | set(_parse_git_nul_paths(untracked.stdout))
             deleted_names = {
                 name for name in changed_names
                 if name.strip() and not os.path.lexists(str(root / name))
             }
     else:
-        listed = _run_git(root, "ls-files", "-co", "--exclude-standard")
+        listed = _run_git(root, "ls-files", "-co", "--exclude-standard", "-z")
         if listed.returncode != 0:
             raise _git_failure("git ls-files", listed)
-        names = set(listed.stdout.splitlines())
+        names = set(_parse_git_nul_paths(listed.stdout))
 
     result: list[Path] = []
     non_regular_names: set[str] = set()
     skipped_paths: dict[str, list[str]] = defaultdict(list)
+    excluded_directories = set(_collect_excluded_directories(root))
+    excluded_directories.update(
+        excluded
+        for name in names
+        if (excluded := _excluded_directory_for_name(name)) is not None
+    )
+    deleted_names = {
+        name for name in deleted_names if _excluded_directory_for_name(name) is None
+    }
     for name in sorted(name for name in names if name.strip()):
+        if _excluded_directory_for_name(name) is not None:
+            continue
         path = root / name
         if path.is_symlink():
             skipped_paths["symlink_change"].append(name)
@@ -294,17 +340,27 @@ def _git_candidates(
         {reason: tuple(sorted(paths)) for reason, paths in skipped_paths.items()},
         head_sha,
         change_by_path,
+        tuple(sorted(excluded_directories)),
     )
 
 
-def _walk_candidates(root: Path) -> Iterable[Path]:
+def _walk_candidates(root: Path) -> tuple[list[Path], tuple[str, ...]]:
+    candidates: list[Path] = []
+    excluded_directories: set[str] = set()
     for current_root, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d.lower() not in IGNORED_DIRS]
         base = Path(current_root)
+        kept_dirs: list[str] = []
+        for directory in dirs:
+            if directory.lower() in IGNORED_DIRS:
+                excluded_directories.add((base / directory).relative_to(root).as_posix())
+            else:
+                kept_dirs.append(directory)
+        dirs[:] = kept_dirs
         for name in files:
             path = base / name
             if not path.is_symlink():
-                yield path
+                candidates.append(path)
+    return candidates, tuple(sorted(excluded_directories))
 
 
 def _skip_reason(path: Path, root: Path, max_file_bytes: int) -> str | None:
@@ -361,13 +417,20 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
     git_result = _git_candidates(root, options.changed_only)
     is_git_repo = git_result is not None
     if git_result is None:
-        candidates = sorted(_walk_candidates(root))
+        candidates, excluded_directories = _walk_candidates(root)
         deleted_paths: tuple[str, ...] = ()
         pre_skipped_paths: dict[str, tuple[str, ...]] = {}
         head_sha = None
         change_by_path: dict[str, str] = {}
     else:
-        candidates, deleted_paths, pre_skipped_paths, head_sha, change_by_path = git_result
+        (
+            candidates,
+            deleted_paths,
+            pre_skipped_paths,
+            head_sha,
+            change_by_path,
+            excluded_directories,
+        ) = git_result
 
     skipped = Counter()
     skipped_paths: dict[str, list[str]] = defaultdict(list)
@@ -430,4 +493,5 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         skipped_paths_by_reason={
             reason: tuple(sorted(paths)) for reason, paths in skipped_paths.items()
         },
+        excluded_directories=excluded_directories,
     )

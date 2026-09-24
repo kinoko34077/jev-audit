@@ -18,6 +18,15 @@ class RuntimeAuditError(RuntimeError):
         super().__init__(f"{error.code}: {error.message}")
 
 
+class RuntimeDependencyError(RuntimeError):
+    """Explicit Runtime opt-in failed before the kernel could be loaded."""
+
+    code = "DEPENDENCY_ERROR"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(f"{self.code}: {message}")
+
+
 _NO_AUDITABLE_FILES = "No auditable text files found after exclusions"
 _PROVIDER_ERROR_CODES = {
     "TypeSafeAuthenticationError": "PROVIDER_AUTHENTICATION",
@@ -93,7 +102,7 @@ def _runtime_opted_in() -> bool:
 
 
 def _load_runtime() -> SimpleNamespace | None:
-    """Load Runtime only after explicit ``JEV_AUDIT_RUNTIME`` opt-in."""
+    """Load Runtime only after explicit opt-in; never silently downgrade it."""
     if not _runtime_opted_in():
         return None
     try:
@@ -106,9 +115,21 @@ def _load_runtime() -> SimpleNamespace | None:
             ActionResult,
         )
     except ModuleNotFoundError as exc:
-        if exc.name != "kinotch_runtime":
-            raise
-        return None
+        if exc.name == "kinotch_runtime":
+            raise RuntimeDependencyError(
+                "JEV_AUDIT_RUNTIME=1 but kinotch-runtime is not installed. "
+                "Install the pinned Pilot dependency with: "
+                "python -m pip install -r requirements-pilot.txt"
+            ) from exc
+        raise RuntimeDependencyError(
+            "JEV_AUDIT_RUNTIME=1 but kinotch-runtime could not be loaded "
+            f"because dependency {exc.name!r} is missing."
+        ) from exc
+    except Exception as exc:
+        raise RuntimeDependencyError(
+            "JEV_AUDIT_RUNTIME=1 but kinotch-runtime could not be loaded "
+            f"({type(exc).__name__})."
+        ) from exc
 
     return SimpleNamespace(
         ActionContext=ActionContext,
@@ -126,7 +147,9 @@ def run_audit(path: str | Path = ".", **options: Any) -> Any:
     The Runtime dependency is intentionally optional. A normal jev-audit
     installation follows the unchanged legacy path. Installing the pinned Pilot
     requirements and setting the explicit opt-in enables the shared
-    ``repo.audit`` Action boundary used by both CLI and MCP.
+    ``repo.audit`` Action boundary used by both CLI and MCP. If that opt-in is
+    set without a loadable Runtime dependency, ``DEPENDENCY_ERROR`` is raised;
+    the bridge never silently falls back to the direct path.
     """
     runtime = _load_runtime()
     if runtime is None:

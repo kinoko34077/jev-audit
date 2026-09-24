@@ -1,3 +1,4 @@
+import json
 import tempfile
 import threading
 import unittest
@@ -167,6 +168,9 @@ class AuditorTests(unittest.TestCase):
         self.assertEqual(report.status, "clear")
         self.assertEqual(report.files_scanned, 0)
         self.assertEqual(report.batches, 0)
+        self.assertEqual(report.provenance["requested_workers"], 4)
+        self.assertEqual(report.provenance["effective_workers"], 0)
+        self.assertEqual(json.loads(json.dumps(report.to_dict()))["provenance"]["effective_workers"], 0)
         audit_one.assert_not_called()
 
     def test_changed_only_with_only_skipped_files_returns_unknown_report(self):
@@ -297,6 +301,7 @@ class AuditorTests(unittest.TestCase):
             skipped_sensitive_paths=(),
             git={"is_git_repo": True, "deleted_paths": (), "head_sha": "abc123"},
             skipped_paths_by_reason={"binary_or_unknown_encoding": ("blob.bin",)},
+            excluded_directories=(".kinotch",),
         )
         result = JevResult(
             model="jev-custom",
@@ -325,10 +330,40 @@ class AuditorTests(unittest.TestCase):
         self.assertEqual(report.coverage["sent_chars"], 9)
         self.assertEqual(report.coverage["original_chars"], 14)
         self.assertEqual(report.coverage["files_skipped"], 1)
+        self.assertEqual(report.excluded_directories, (".kinotch",))
+        self.assertEqual(report.coverage["excluded_directory_count"], 1)
         self.assertEqual(report.provenance["requested_model"], "jev-custom")
         self.assertEqual(report.provenance["resolved_model"], "jev-custom")
+        self.assertEqual(report.provenance["requested_workers"], 1)
+        self.assertEqual(report.provenance["effective_workers"], 1)
+        self.assertEqual(report.provenance["batch_count"], 1)
         self.assertEqual(report.provenance["git_head_sha"], "abc123")
         self.assertTrue(report.provenance["profile_sha256"])
+
+    def test_provenance_clamps_effective_workers_to_batch_count(self):
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=(FileSnapshot(path="a.py", content="x", chars=1, original_chars=1, truncated=False),),
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": False, "deleted_paths": ()},
+        )
+        result = JevResult(
+            model="jev-test",
+            elapsed_ms=1.0,
+            usage={"input_tokens": 1, "output_tokens": 1},
+            choices={"local_status": {"probabilities": {"clear": 1.0, "review": 0.0, "rework": 0.0, "unknown": 0.0}}},
+            nouls={"concrete_issue": 0.0, "spec_mismatch": 0.0, "regression_risk": 0.0},
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor._audit_one",
+            return_value=BatchAudit(index=1, paths=("a.py",), chars=1, result=result),
+        ):
+            report = audit_directory(".", workers=16)
+
+        self.assertEqual(report.provenance["requested_workers"], 16)
+        self.assertEqual(report.provenance["effective_workers"], 1)
+        self.assertEqual(report.provenance["workers"], 1)
 
 
 if __name__ == "__main__":

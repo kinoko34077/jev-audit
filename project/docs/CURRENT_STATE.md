@@ -1,8 +1,9 @@
 # Current State
 
 Base version: `0.3.8`
+Project version: `0.2.10`
 
-Last verified: 2026-09-24 — Project integration fixes and verification
+Last verified: 2026-09-24 — boundary finish, version bump, and verification
 
 ## Implemented
 
@@ -17,7 +18,15 @@ Last verified: 2026-09-24 — Project integration fixes and verification
 - Profile, Git, provider-response, MCP scope, Runtime opt-in, coverage, and
   provenance boundaries are validated fail-closed
 - Core/CLI/MCP total-work guardrails and changed-only diff context are enabled;
-  missing provider token usage remains explicitly unreported
+  missing provider token usage remains explicitly unreported with completeness
+  and missing-batch metadata
+- MCP custom profiles use the shared profile resolver, allowed-root boundary,
+  and 256,000-byte size cap before profile contents are read
+- Runtime opt-in without an installed or compatible Pilot dependency returns an
+  explicit dependency error rather than silently using the direct path
+- Reports distinguish requested/effective workers and record excluded ignored
+  directories without enumerating their child files
+- Git path enumeration uses NUL-delimited output for newline-safe filenames
 - CLI clean changed-only no-op does not require an API key because no Jev request
   is issued
 
@@ -47,4 +56,5 @@ Last verified: 2026-09-24 — Project integration fixes and verification
 - `knt base-check`
 - `knt setup`
 - `knt verify`
-- `python -m unittest discover -s tests -v`
+- `python -m unittest discover -s tests -v` (101 tests; Windows skips the two
+  newline-filename cases)

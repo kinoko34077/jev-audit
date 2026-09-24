@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from .models import AuditProfile, AuditRule
@@ -10,13 +11,22 @@ from .models import AuditProfile, AuditRule
 BUNDLED_PROFILE_DIR = Path(__file__).resolve().parent / "profiles"
 
 
+@dataclass(frozen=True)
+class ProfileReference:
+    """Resolved profile location before its JSON body is opened."""
+
+    path: Path
+    bundled: bool
+
+
 def available_profiles() -> list[str]:
     if not BUNDLED_PROFILE_DIR.exists():
         return []
     return sorted(path.stem for path in BUNDLED_PROFILE_DIR.glob("*.json"))
 
 
-def load_profile(name_or_path: str) -> AuditProfile:
+def resolve_profile_reference(name_or_path: str) -> ProfileReference:
+    """Resolve a bundled name or explicit custom JSON path without reading it."""
     raw = str(name_or_path).strip()
     if not raw:
         raise ValueError("profile name or JSON path must not be empty")
@@ -26,18 +36,28 @@ def load_profile(name_or_path: str) -> AuditProfile:
     # replace `development` or another built-in policy by path shadowing.
     if raw in available_profiles():
         path = BUNDLED_PROFILE_DIR / f"{raw}.json"
+        bundled = True
     else:
         candidate = Path(raw).expanduser()
         if candidate.exists() and candidate.is_dir():
             raise ValueError(f"Audit profile path must be a JSON file, not a directory: {candidate}")
         if candidate.suffix.lower() == ".json" or candidate.is_absolute() or candidate.parent != Path("."):
             path = candidate.resolve()
+            bundled = False
         else:
             path = BUNDLED_PROFILE_DIR / f"{raw}.json"
+            bundled = True
+
+    return ProfileReference(path=path, bundled=bundled)
+
+
+def load_profile_from_reference(reference: ProfileReference) -> AuditProfile:
+    """Load a previously resolved reference after boundary checks are complete."""
+    path = reference.path
 
     if not path.exists():
         known = ", ".join(available_profiles()) or "(none)"
-        raise FileNotFoundError(f"Audit profile not found: {name_or_path!r}. bundled={known}")
+        raise FileNotFoundError(f"Audit profile not found: {path}. bundled={known}")
     if not path.is_file():
         raise ValueError(f"Audit profile path must be a JSON file: {path}")
 
@@ -105,3 +125,7 @@ def load_profile(name_or_path: str) -> AuditProfile:
         source=str(path),
         source_sha256=source_sha256,
     )
+
+
+def load_profile(name_or_path: str) -> AuditProfile:
+    return load_profile_from_reference(resolve_profile_reference(name_or_path))

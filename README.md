@@ -158,6 +158,8 @@ bundled profile名（`development`、`generic`）は常にパッケージ内の�
 
 Git metadataが存在するのにroot判定や候補列挙に失敗した場合は、`.gitignore`を無視したdirectory walkへfail-openせずエラーで停止します。`--changed-only`でsymlinkやsubmodule pointerだけが変更された場合も、変更をskip情報として残して`UNKNOWN`扱いにします。
 
+`.kinotch`、`.venv`、`node_modules`等のignored directoryは中のfileを列挙せず、reportの`excluded_directories`へdirectory単位で記録します。`coverage.char_coverage`は実際に読み込んだtext fileだけの送信文字数/元文字数であり、repository全体のcoverageではありません。
+
 これはファイル名・拡張子等による除外で、完全なDLPではありません。ソース内に直接書かれた鍵や機密情報は監査対象になり得ます。外部APIへの送信が認められている範囲で利用してください。`TYPESAFE_LOG_LEVEL=debug`やTypeSafe SDK loggerのDEBUGを有効にすると、request bodyに含まれるsource本文がローカルログやログ収集基盤へ出る可能性があるため、機密性のある監査ではDEBUG loggingを無効にしてください。詳しくは[利用ガイドのセキュリティ節](docs/USAGE_GUIDE.md)を参照してください。
 
 ## MCP
@@ -185,7 +187,7 @@ jev-audit-mcp
 
 Codexではactive workspace/repositoryの絶対pathをtool引数 `path` として渡すのが確実です。Claude Codeでは`path`を明示してもよく、省略時は`CLAUDE_PROJECT_DIR`を使用します。CLIとMCPは同じAudit Coreを使用します。
 
-MCPは既定で`JEV_AUDIT_ALLOWED_ROOT`（未設定時は`CLAUDE_PROJECT_DIR`、さらに未設定ならserverのcurrent directory）配下だけを監査します。custom profileのJSON pathも同じroot制限を受けます。任意pathを明示的に許可する場合だけ`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定してください。MCPにはfile size、batch size、workers、総files、総文字数、総batchesのhard capもあります。
+MCPは既定で`JEV_AUDIT_ALLOWED_ROOT`（未設定時は`CLAUDE_PROJECT_DIR`、さらに未設定ならserverのcurrent directory）配下だけを監査します。custom profileのJSON pathも同じroot制限を受け、本文を読む前に検証されます。任意pathを明示的に許可する場合だけ`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定してください。MCPにはfile size、batch size、workers、総files、総文字数、総batchesのhard capがあり、custom profile JSONは256,000 bytesまでです。
 
 ## KiNoTch Runtime Pilot
 
@@ -206,7 +208,9 @@ that opt-in, the direct Audit Core path remains active even if the package happe
 to be installed. This is a measurement boundary, not a CLI/MCP Surface Pack. Known audit and provider
 failures retain a structured code, the original message, and exception metadata
 where available; unknown Runtime failures are re-raised for the Runtime
-kernel's `INTERNAL_ERROR` redaction.
+kernel's `INTERNAL_ERROR` redaction. If opt-in is set but the pinned Runtime
+package or one of its imports is unavailable, the command fails with an
+explicit dependency error; it never silently falls back to direct execution.
 
 The evaluated live Pilot evidence and remaining Contract boundary are recorded in
 [docs/RUNTIME_PILOT.md](docs/RUNTIME_PILOT.md).
@@ -218,9 +222,9 @@ The evaluated live Pilot evidence and remaining Contract boundary are recorded i
 - `local_status`: `clear / review / rework / unknown` の確率分布。`actionable` は `review + rework` で、詳細確認や修正へ回す度合いです。`unknown` は問題の確率ではなく、局所的な判断材料の不足を表します。
 - `elapsed`: 実行開始から終了までのwall-clock時間
 - `reason`: statusの判定条件とbatch。triggerには対象`paths`も含まれます。
-- `coverage`: 送信文字数/元文字数、truncated file数、skip file数。`truncated_paths`と`skipped_paths_by_reason`で対象範囲を復元できます。
-- `provenance`: tool version、resolved model、profile hash、scan条件、Git HEAD SHA。再現性確認に使います。
-- `tokens`: providerがusageを返さない場合はJSONで`null`、テキストでは`-`です。未報告を0 tokenと解釈しないでください。
+- `coverage`: 実際に読み込んだtext fileの送信文字数/元文字数、truncated file数、file entry skip数、列挙しなかったignored directory数。`char_coverage`はこのscanned text file範囲だけの比率です。
+- `provenance`: tool version、requested/resolved model、profile hash、scan条件、requested/effective workers、実batch数、Git HEAD SHA。再現性確認に使います。
+- `tokens`: providerがusageを返さない場合はJSONで`null`、テキストでは`-`です。部分報告ではreported合計と`*_missing_batches`が表示され、未報告を0 tokenと解釈しないでください。
 - `api work`: 並列Jev requestの処理時間合計であり、実待ち時間ではない
 
 GREENは安全証明ではありません。riskの値は正解率やrepo品質スコアでもありません。いずれのstatusでも、テスト・実操作・詳細レビューを省略する根拠にはなりません。

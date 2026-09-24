@@ -4,6 +4,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 from jev_audit import cli
+from jev_audit.runtime_bridge import RuntimeDependencyError
 
 
 class CLITests(unittest.TestCase):
@@ -51,6 +52,18 @@ class CLITests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertIn("ERROR: could not save report: disk full", error_output.getvalue())
         self.assertNotIn("Traceback", error_output.getvalue())
+
+    def test_runtime_dependency_failure_is_explicit_exit_two(self):
+        error_output = io.StringIO()
+        with patch.object(
+            cli,
+            "run_audit",
+            side_effect=RuntimeDependencyError("kinotch-runtime missing"),
+        ), redirect_stderr(error_output):
+            exit_code = cli.main(["."])
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("DEPENDENCY_ERROR", error_output.getvalue())
 
 
 if __name__ == "__main__":

@@ -118,9 +118,12 @@ def _coverage(scan: Any) -> dict[str, Any]:
     files_skipped = sum(scan.skipped_counts.values())
     return {
         "files_scanned": len(scan.files),
+        "file_entries_skipped": files_skipped,
+        # Backward-compatible alias; this counts enumerated file entries only.
         "files_skipped": files_skipped,
         "files_considered": len(scan.files) + files_skipped,
         "files_truncated": sum(1 for item in scan.files if item.truncated),
+        "excluded_directory_count": len(scan.excluded_directories),
         "sent_chars": sent_chars,
         "original_chars": original_chars,
         "content_sent_chars": content_sent_chars,
@@ -138,7 +141,9 @@ def _provenance(
     max_file_chars: int,
     max_file_bytes: int,
     batch_chars: int,
-    workers: int,
+    requested_workers: int,
+    effective_workers: int,
+    batch_count: int,
     requested_model: str | None,
     max_files: int | None,
     max_total_chars: int | None,
@@ -155,7 +160,13 @@ def _provenance(
         "max_file_chars": max_file_chars,
         "max_file_bytes": max_file_bytes,
         "batch_chars": batch_chars,
-        "workers": workers,
+        # `workers` remains as a compatibility alias for its historical
+        # effective concurrency meaning; new consumers should use the explicit
+        # requested/effective fields.
+        "workers": effective_workers,
+        "requested_workers": requested_workers,
+        "effective_workers": effective_workers,
+        "batch_count": batch_count,
         "max_files": max_files,
         "max_total_chars": max_total_chars,
         "max_batches": max_batches,
@@ -194,6 +205,7 @@ def audit_directory(
         raise ValueError("workers must be > 0")
     if workers > MAX_WORKERS:
         raise ValueError(f"workers must be <= {MAX_WORKERS}")
+    requested_workers = workers
 
     started = time.perf_counter()
 
@@ -208,19 +220,6 @@ def audit_directory(
         ),
     )
     coverage = _coverage(scan)
-    provenance = _provenance(
-        profile_obj,
-        scan,
-        changed_only=changed_only,
-        max_file_chars=max_file_chars,
-        max_file_bytes=max_file_bytes,
-        batch_chars=batch_chars,
-        workers=workers,
-        requested_model=model,
-        max_files=max_files,
-        max_total_chars=max_total_chars,
-        max_batches=max_batches,
-    )
     truncated_paths = tuple(item.path for item in scan.files if item.truncated)
 
     if max_files is not None and len(scan.files) > max_files:
@@ -236,6 +235,21 @@ def audit_directory(
     if not scan.files:
         if not changed_only:
             raise RuntimeError("No auditable text files found after exclusions")
+        provenance = _provenance(
+            profile_obj,
+            scan,
+            changed_only=changed_only,
+            max_file_chars=max_file_chars,
+            max_file_bytes=max_file_bytes,
+            batch_chars=batch_chars,
+            requested_workers=requested_workers,
+            effective_workers=0,
+            batch_count=0,
+            requested_model=model,
+            max_files=max_files,
+            max_total_chars=max_total_chars,
+            max_batches=max_batches,
+        )
         aggregate = aggregate_batches(())
         has_deleted_changes = bool(scan.git.get("deleted_paths"))
         has_skipped_changes = bool(scan.skipped_counts or scan.skipped_sensitive_paths)
@@ -255,6 +269,7 @@ def audit_directory(
             skipped_paths_by_reason=scan.skipped_paths_by_reason,
             coverage=coverage,
             provenance=provenance,
+            excluded_directories=scan.excluded_directories,
         )
 
     batches = make_batches(scan.files, batch_chars)
@@ -262,9 +277,24 @@ def audit_directory(
         raise ValueError(
             f"max_batches exceeded: {len(batches)} batches > {max_batches}"
         )
-    workers = min(workers, max(1, len(batches)))
+    effective_workers = min(requested_workers, len(batches))
+    provenance = _provenance(
+        profile_obj,
+        scan,
+        changed_only=changed_only,
+        max_file_chars=max_file_chars,
+        max_file_bytes=max_file_bytes,
+        batch_chars=batch_chars,
+        requested_workers=requested_workers,
+        effective_workers=effective_workers,
+        batch_count=len(batches),
+        requested_model=model,
+        max_files=max_files,
+        max_total_chars=max_total_chars,
+        max_batches=max_batches,
+    )
 
-    batch_audits = _audit_batches(tuple(batches), profile_obj, model, workers)
+    batch_audits = _audit_batches(tuple(batches), profile_obj, model, effective_workers)
     aggregate = aggregate_batches(batch_audits)
     aggregate["wall_clock_ms"] = (time.perf_counter() - started) * 1000.0
 
@@ -282,4 +312,5 @@ def audit_directory(
         skipped_paths_by_reason=scan.skipped_paths_by_reason,
         coverage=coverage,
         provenance=provenance,
+        excluded_directories=scan.excluded_directories,
     )

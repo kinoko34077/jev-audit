@@ -20,10 +20,13 @@ def _pct(value: float | None) -> str:
     return f"{value * 100:5.1f}%"
 
 
-def _tokens(value: object) -> str:
+def _tokens(value: object, *, complete: bool = True, missing_batches: int = 0) -> str:
     if value is None:
         return "-"
-    return str(int(value))
+    rendered = str(int(value))
+    if not complete and missing_batches:
+        return f"{rendered}+ [{missing_batches} batches unreported]"
+    return rendered
 
 
 def format_report(report: AuditReport) -> str:
@@ -73,23 +76,30 @@ def format_report(report: AuditReport) -> str:
         ratio = coverage.get("char_coverage")
         ratio_text = "-" if ratio is None else f"{float(ratio) * 100:.1f}%"
         lines.append(
-            f"coverage: chars={int(coverage.get('sent_chars', 0))}/{int(coverage.get('original_chars', 0))} "
+            f"coverage: scanned chars={int(coverage.get('sent_chars', 0))}/{int(coverage.get('original_chars', 0))} "
             f"({ratio_text}) truncated={int(coverage.get('files_truncated', 0))} "
-            f"skipped={int(coverage.get('files_skipped', 0))}"
+            f"file_entries_skipped={int(coverage.get('file_entries_skipped', coverage.get('files_skipped', 0)))} "
+            f"directories_excluded={int(coverage.get('excluded_directory_count', 0))}"
         )
+        lines.append("coverage scope: scanned text files only; excluded directories were not enumerated")
+
+    if report.excluded_directories:
+        lines.append(f"excluded directories: {', '.join(report.excluded_directories)}")
 
     provenance = report.provenance
     if provenance:
         lines.append(
             f"provenance: tool={provenance.get('tool_version', 'unknown')} "
             f"model={provenance.get('resolved_model', 'unknown')} "
-            f"git={provenance.get('git_head_sha') or 'unknown'}"
+            f"git={provenance.get('git_head_sha') or 'unknown'} "
+            f"workers={provenance.get('effective_workers', provenance.get('workers', 'unknown'))}/"
+            f"{provenance.get('requested_workers', provenance.get('workers', 'unknown'))}"
         )
 
     usage = aggregate.get("usage", {})
     lines.append(
-        f"tokens : input={_tokens(usage.get('input_tokens', 0))} "
-        f"output={_tokens(usage.get('output_tokens', 0))}"
+        f"tokens : input={_tokens(usage.get('input_tokens', 0), complete=bool(usage.get('input_tokens_complete', True)), missing_batches=int(usage.get('input_tokens_missing_batches', 0)))} "
+        f"output={_tokens(usage.get('output_tokens', 0), complete=bool(usage.get('output_tokens_complete', True)), missing_batches=int(usage.get('output_tokens_missing_batches', 0)))}"
     )
     lines.append(
         f"elapsed: {float(aggregate.get('wall_clock_ms', 0.0)):.1f} ms (wall-clock)"

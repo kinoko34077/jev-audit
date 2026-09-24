@@ -39,6 +39,7 @@ class ScanResult:
     skipped_sensitive_paths: tuple[str, ...]
     git: dict[str, Any]
     skipped_paths_by_reason: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    excluded_directories: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ class AuditReport:
     skipped_paths_by_reason: dict[str, tuple[str, ...]] = field(default_factory=dict)
     coverage: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
+    excluded_directories: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

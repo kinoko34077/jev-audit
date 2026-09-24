@@ -28,7 +28,24 @@ class ProjectOverlayTests(unittest.TestCase):
         self.assertIn("WriteAllText", launcher)
         self.assertIn("jev-audit.ps1", launcher)
         self.assertIn("UTF8Encoding", launcher)
+        self.assertIn("%*", launcher)
+        self.assertIn("LASTEXITCODE", launcher)
+        self.assertIn("ASCIIEncoding", launcher)
         self.assertNotIn("Set-Content -Encoding ASCII", launcher)
+
+    def test_project_version_sources_are_synchronized(self):
+        root = Path(__file__).parents[1]
+        pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+        package = (root / "jev_audit" / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('version = "0.2.10"', pyproject)
+        self.assertIn('__version__ = "0.2.10"', package)
+
+    def test_runtime_docs_require_installation_and_explicit_opt_in(self):
+        root = Path(__file__).parents[1]
+        for relative in ("README.md", "docs/RUNTIME_PILOT.md", "project/docs/CURRENT_STATE.md"):
+            text = (root / relative).read_text(encoding="utf-8")
+            self.assertIn("JEV_AUDIT_RUNTIME=1", text, relative)
+            self.assertIn("requirements-pilot.txt", text, relative)
 
 
 if __name__ == "__main__":

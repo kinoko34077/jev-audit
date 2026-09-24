@@ -43,6 +43,23 @@ class ScannerTests(unittest.TestCase):
             self.assertIn("main.py", paths)
             self.assertNotIn(".audit/result.json", paths)
 
+    def test_ignored_directories_are_recorded_without_listing_child_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for directory in (root / ".kinotch", root / "node_modules", root / "src" / ".venv"):
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / "fixture.txt").write_text("fixture", encoding="utf-8")
+            (root / "main.py").write_text("print('ok')", encoding="utf-8")
+
+            result = scan_directory(root, ScanOptions())
+
+        self.assertEqual(
+            result.excluded_directories,
+            (".kinotch", "node_modules", "src/.venv"),
+        )
+        self.assertNotIn(".kinotch/fixture.txt", result.skipped_paths_by_reason)
+        self.assertNotIn("node_modules/fixture.txt", result.skipped_paths_by_reason)
+
     @unittest.skipUnless(shutil.which("git"), "git is required for this test")
     def test_kinotch_directory_is_ignored_from_repository_scan(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -57,6 +74,8 @@ class ScannerTests(unittest.TestCase):
             paths = {item.path for item in result.files}
             self.assertIn("main.py", paths)
             self.assertNotIn(".kinotch/fixture.txt", paths)
+            self.assertIn(".kinotch", result.excluded_directories)
+            self.assertNotIn(".kinotch/fixture.txt", result.excluded_directories)
 
     def test_missing_git_falls_back_to_directory_scan(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -110,7 +129,7 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
                 if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123 refs/heads/main\n", stderr="")
-                if args == ("diff", "--name-only", "HEAD", "--"):
+                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
                     return subprocess.CompletedProcess(
                         args,
                         128,
@@ -130,7 +149,7 @@ class ScannerTests(unittest.TestCase):
             root = Path(temp)
 
             def fake_run_git(_root, *args):
-                if args == ("ls-files", "-co", "--exclude-standard"):
+                if args == ("ls-files", "-co", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(
                         args,
                         128,
@@ -166,12 +185,12 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
                 if args == ("rev-parse", "--verify", "HEAD"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
-                if args == ("diff", "--name-only", "HEAD", "--"):
-                    return subprocess.CompletedProcess(args, 0, stdout="vendor-submodule\n", stderr="")
-                if args == ("ls-files", "--others", "--exclude-standard"):
+                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                    return subprocess.CompletedProcess(args, 0, stdout="vendor-submodule\0", stderr="")
+                if args == ("ls-files", "--others", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-                if args == ("ls-files", "--stage", "--", "vendor-submodule"):
-                    return subprocess.CompletedProcess(args, 0, stdout="160000 abc 0\tvendor-submodule\n", stderr="")
+                if args == ("ls-files", "--stage", "-z", "--", "vendor-submodule"):
+                    return subprocess.CompletedProcess(args, 0, stdout="160000 abc 0\tvendor-submodule\0", stderr="")
                 raise AssertionError(f"unexpected git command: {args}")
 
             with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
@@ -202,9 +221,9 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
                 if args == ("rev-parse", "--verify", "HEAD"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
-                if args == ("diff", "--name-only", "HEAD", "--"):
-                    return subprocess.CompletedProcess(args, 0, stdout="link.txt\n", stderr="")
-                if args == ("ls-files", "--others", "--exclude-standard"):
+                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                    return subprocess.CompletedProcess(args, 0, stdout="link.txt\0", stderr="")
+                if args == ("ls-files", "--others", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
                 raise AssertionError(f"unexpected git command: {args}")
 
@@ -229,11 +248,11 @@ class ScannerTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
                 if args == ("rev-parse", "--verify", "HEAD"):
                     return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
-                if args == ("diff", "--name-only", "HEAD", "--"):
-                    return subprocess.CompletedProcess(args, 0, stdout="changed.py\n", stderr="")
-                if args == ("ls-files", "--others", "--exclude-standard"):
+                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                    return subprocess.CompletedProcess(args, 0, stdout="changed.py\0", stderr="")
+                if args == ("ls-files", "--others", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-                if args == ("ls-files", "--stage", "--", "changed.py"):
+                if args == ("ls-files", "--stage", "-z", "--", "changed.py"):
                     return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
                 if args == ("diff", "--no-ext-diff", "--unified=80", "HEAD", "--", "changed.py"):
                     return subprocess.CompletedProcess(
@@ -252,6 +271,61 @@ class ScannerTests(unittest.TestCase):
         self.assertIn("+++ b/changed.py", result.files[0].change)
         self.assertLessEqual(len(result.files[0].change), 20_000)
 
+    @unittest.skipIf(os.name == "nt", "Windows filenames cannot contain newlines")
+    def test_newline_git_filename_is_one_path_in_changed_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            name = "line\nbreak.py"
+            (root / name).write_text("x=1", encoding="utf-8")
+
+            def fake_run_git(_root, *args):
+                if args == ("symbolic-ref", "--quiet", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="refs/heads/main\n", stderr="")
+                if args == ("show-ref", "--verify", "--quiet", "refs/heads/main"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc refs/heads/main\n", stderr="")
+                if args == ("rev-parse", "--verify", "HEAD"):
+                    return subprocess.CompletedProcess(args, 0, stdout="abc123\n", stderr="")
+                if args == ("diff", "--name-only", "-z", "HEAD", "--"):
+                    return subprocess.CompletedProcess(args, 0, stdout=name + "\0", stderr="")
+                if args == ("ls-files", "--others", "--exclude-standard", "-z"):
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                if args == ("ls-files", "--stage", "-z", "--", name):
+                    return subprocess.CompletedProcess(args, 0, stdout="100644 abc 0\t" + name + "\0", stderr="")
+                if args == ("diff", "--no-ext-diff", "--unified=80", "HEAD", "--", name):
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                raise AssertionError(f"unexpected git command: {args}")
+
+            with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
+                "jev_audit.scanner._run_git", side_effect=fake_run_git
+            ):
+                result = scan_directory(root, ScanOptions(changed_only=True))
+
+        self.assertEqual([item.path for item in result.files], [name])
+
+    def test_nul_git_parsers_keep_newline_filename(self):
+        from jev_audit.scanner import _parse_git_nul_paths, _parse_git_stage_modes
+
+        name = "line\nbreak.py"
+        self.assertEqual(_parse_git_nul_paths(name + "\0"), [name])
+        self.assertEqual(
+            _parse_git_stage_modes("100644 abc 0\t" + name + "\0"),
+            {name: "100644"},
+        )
+
+    @unittest.skipIf(os.name == "nt", "Windows filenames cannot contain newlines")
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_newline_git_filename_is_one_path_in_full_scan(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            name = "line\nbreak.py"
+            (root / name).write_text("x=1", encoding="utf-8")
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "--", name], check=True)
+
+            result = scan_directory(root, ScanOptions())
+
+        self.assertEqual([item.path for item in result.files], [name])
+
     def test_changed_only_unborn_head_uses_ref_state_not_error_text(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -267,8 +341,8 @@ class ScannerTests(unittest.TestCase):
                         stdout="",
                         stderr="fatal: révision introuvable",
                     )
-                if args == ("ls-files", "-co", "--exclude-standard"):
-                    return subprocess.CompletedProcess(args, 0, stdout="new.py\n", stderr="")
+                if args == ("ls-files", "-co", "--exclude-standard", "-z"):
+                    return subprocess.CompletedProcess(args, 0, stdout="new.py\0", stderr="")
                 raise AssertionError(f"unexpected git command: {args}")
 
             with patch("jev_audit.scanner._is_git_root", return_value=True), patch(

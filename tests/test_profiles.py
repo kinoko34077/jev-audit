@@ -4,7 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from jev_audit.profiles import available_profiles, load_profile
+from jev_audit.profiles import (
+    ProfileReference,
+    available_profiles,
+    load_profile,
+    resolve_profile_reference,
+)
 
 
 class ProfileTests(unittest.TestCase):
@@ -65,6 +70,20 @@ class ProfileTests(unittest.TestCase):
             path.write_text(json.dumps({"name": "bad", "rules": [{}]}), encoding="utf-8")
             with self.assertRaises(ValueError):
                 load_profile(str(path))
+
+    def test_profile_reference_distinguishes_bundled_and_custom_paths(self):
+        bundled = resolve_profile_reference("development")
+        self.assertIsInstance(bundled, ProfileReference)
+        self.assertTrue(bundled.bundled)
+        self.assertEqual(bundled.path.name, "development.json")
+
+        with tempfile.TemporaryDirectory() as temp:
+            custom_path = Path(temp) / "custom.json"
+            custom_path.write_text("{}", encoding="utf-8")
+            custom = resolve_profile_reference(str(custom_path))
+
+        self.assertFalse(custom.bundled)
+        self.assertEqual(custom.path, custom_path.resolve())
 
 
 if __name__ == "__main__":

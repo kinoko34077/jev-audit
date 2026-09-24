@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .profiles import available_profiles
+from .profiles import available_profiles, resolve_profile_reference
 from .runtime_bridge import run_audit
 
 
@@ -15,6 +15,7 @@ MCP_MAX_WORKERS = 16
 MCP_MAX_FILES = 5_000
 MCP_MAX_TOTAL_CHARS = 2_000_000
 MCP_MAX_BATCHES = 500
+MCP_MAX_CUSTOM_PROFILE_BYTES = 256_000
 
 
 def _allow_any_path() -> bool:
@@ -69,16 +70,30 @@ def _resolve_profile(profile: str) -> str:
     """Keep MCP custom profile reads inside the same trust boundary."""
     if not isinstance(profile, str) or not profile.strip():
         raise ValueError("MCP profile must be a bundled name or JSON path")
-    if profile in available_profiles() or _allow_any_path():
+    reference = resolve_profile_reference(profile)
+    if reference.bundled:
         return profile
-    candidate = Path(profile).expanduser().resolve()
-    allowed_root = _allowed_root()
-    try:
-        candidate.relative_to(allowed_root)
-    except ValueError as exc:
-        raise ValueError(
-            f"Custom profile is outside the MCP allowed root {allowed_root}: {candidate}"
-        ) from exc
+    candidate = reference.path
+    if not _allow_any_path():
+        allowed_root = _allowed_root()
+        try:
+            candidate.relative_to(allowed_root)
+        except ValueError as exc:
+            raise ValueError(
+                f"Custom profile is outside the MCP allowed root {allowed_root}: {candidate}"
+            ) from exc
+    if candidate.exists():
+        if not candidate.is_file():
+            raise ValueError(f"Custom profile path must be a JSON file: {candidate}")
+        try:
+            size = candidate.stat().st_size
+        except OSError as exc:
+            raise ValueError(f"Custom profile cannot be inspected: {candidate}") from exc
+        if size > MCP_MAX_CUSTOM_PROFILE_BYTES:
+            raise ValueError(
+                f"Custom profile size {size} exceeds MCP profile size limit "
+                f"{MCP_MAX_CUSTOM_PROFILE_BYTES} bytes: {candidate}"
+            )
     return str(candidate)
 
 
@@ -122,7 +137,7 @@ def _server():
             "falls back to its process working directory. Paths must be under "
             "JEV_AUDIT_ALLOWED_ROOT (or the resolved project root) unless the explicit "
             "JEV_AUDIT_ALLOW_ANY_PATH=1 opt-out is configured; custom profile paths "
-            "follow the same boundary."
+            f"follow the same boundary and are limited to {MCP_MAX_CUSTOM_PROFILE_BYTES} bytes."
         ),
     )
 

@@ -1,6 +1,6 @@
 # jev-audit 利用ガイド
 
-このガイドは、`jev-audit v0.2.9`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
+このガイドは、`jev-audit v0.2.10`を誤解せず、監査範囲・context・実行時間を意識して使うためのものです。READMEは導入と基本操作の入口、[ARCHITECTURE.md](ARCHITECTURE.md)は内部構造、ここでは日々の利用判断と注意点を説明します。
 
 ## 1. このツールの位置付け
 
@@ -89,7 +89,7 @@ signals と skipped
 
 `reason : risk=82% via=spec_mismatch at batch #18`なら、まずbatch #18のpathsを開き、仕様と実装のどの記述を比較できるかを確認します。`skipped`はJevが見ていない範囲の手掛かりです。
 
-JSON reportには`coverage`、`truncated_paths`、`skipped_paths_by_reason`、`provenance`も含まれます。`provenance`にはtool version、resolved model、profile hash、scan条件、Git HEAD SHAが入り、同じ条件での再監査や結果比較に使えます。
+JSON reportには`coverage`、`truncated_paths`、`skipped_paths_by_reason`、`excluded_directories`、`provenance`も含まれます。`provenance`にはtool version、requested/resolved model、profile hash、scan条件、requested/effective workers、実batch数、Git HEAD SHAが入り、同じ条件での再監査や結果比較に使えます。
 
 ## 5. 日常運用とfull scan
 
@@ -105,7 +105,7 @@ jev-audit . --changed-only
 
 HEADがまだない新規repositoryでは、現在の追跡対象と除外されていない未追跡ファイルを候補にするfallbackがあります。この場合、通常の差分監査より広い範囲が選ばれることがあります。
 
-Git metadataが存在するのにroot判定や候補列挙へ失敗した場合は、安全のためdirectory walkへfallbackせずエラーになります。変更対象がsymlinkやsubmodule pointerだけの場合も、`skipped_paths_by_reason`へ残り、clear no-opではなく`unknown`になります。
+Git metadataが存在するのにroot判定や候補列挙へ失敗した場合は、安全のためdirectory walkへfallbackせずエラーになります。変更対象がsymlinkやsubmodule pointerだけの場合も、`skipped_paths_by_reason`へ残り、clear no-opではなく`unknown`になります。`.kinotch`、`.venv`、`node_modules`等のignored directoryは中のfileを列挙せず、`excluded_directories`へroot相対directoryとして記録します。
 
 対象を変更範囲に絞れるため、通常はfull scanよりinput tokenや無関係なnoiseを抑えられます。また、今回一緒に変更した仕様・実装・test・設定を同じ対象集合に含めやすく、変更箇所に関連するcontextへ判断を集中しやすくなります。ただし、それらが同じbatchに入る保証はありません。
 
@@ -242,7 +242,7 @@ status・reason・trigger batch・pathsを確認
 
 YELLOWはrisk値だけでなく、actionableを理由に出る場合もあります。status triggerのbatchとpathsを見て、必要なファイルだけをLLMへ渡してください。監査後にrepository全体をLLMへ再送すると、一次スクリーニングでcontextを絞る利点が小さくなります。
 
-MCPから使う場合、日常の変更監査では`audit_directory`へallowed root配下のrepository root絶対pathと`changed_only: true`を明示するのが確実です。既定の許可範囲は`JEV_AUDIT_ALLOWED_ROOT`、`CLAUDE_PROJECT_DIR`、serverのcurrent directoryの順で決まり、監査対象directoryとcustom profile JSONの両方へ適用されます。`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定した場合だけ範囲制限を外します。MCP callerがfile size、batch size、workersを過大に指定してもhard capで拒否します。結果を受け取った後も、CLIと同じ順序でstatus、reason、batch、pathsを確認し、必要な範囲を詳しく読みます。毎ターンfull scanする必要はありません。
+MCPから使う場合、日常の変更監査では`audit_directory`へallowed root配下のrepository root絶対pathと`changed_only: true`を明示するのが確実です。既定の許可範囲は`JEV_AUDIT_ALLOWED_ROOT`、`CLAUDE_PROJECT_DIR`、serverのcurrent directoryの順で決まり、監査対象directoryとcustom profile JSONの両方へ適用されます。custom profileは本文を読む前にroot内であることを確認し、256,000 bytesを超えるJSONは拒否します。`JEV_AUDIT_ALLOW_ANY_PATH=1`を設定した場合だけ範囲制限を外します。MCP callerがfile size、batch size、workersを過大に指定してもhard capで拒否します。結果を受け取った後も、CLIと同じ順序でstatus、reason、batch、pathsを確認し、必要な範囲を詳しく読みます。毎ターンfull scanする必要はありません。
 
 ## 10. セキュリティと外部送信
 
@@ -284,11 +284,13 @@ full scanは節目に行う
 
 `workers`の既定値は4です。増やすと複数batchを並行処理でき、wall-clock短縮につながる場合がありますが、batch数やinput token量は減りません。API rate limit、network、provider側の並列処理数に左右されるため、2・4・8などを実データで測って決めます。大きい値が常に速いとは限りません。
 
+JSONの`provenance.requested_workers`は指定値、`effective_workers`は実際に同時実行へ使った値です。batchが3つしかないときに`--workers 16`を指定しても、effectiveは3になります。clean no-opやbatch 0ではeffectiveが0です。旧`workers` fieldはeffective値の互換aliasです。
+
 `max_file_chars`や`batch_chars`を変えると、送る内容やbatch境界も変わります。単に値を大きくすれば精度が上がるわけではなく、小さくすれば必要contextを欠く場合があります。`tokens`表示は実行結果で確認し、文字数をtoken数と同一視しないでください。
 
 `max_files`、`max_total_chars`、`max_batches`は、誤って巨大repositoryをfull scanしたときのrequest量を抑えるguardrailです。超過するとbatchをJevへ送る前に入力エラーで停止します。CLIの既定値よりMCPのhard capはさらに小さく、MCPではfile数5,000、送信文字数2,000,000、batch数500、workers 16が上限です。
 
-providerがtoken usageを返さない場合、JSON reportの`usage.input_tokens`または`usage.output_tokens`は`null`になります。未報告を0 tokenと解釈しないでください。テキスト表示では`-`と表示されます。
+providerがtoken usageを返さない場合、JSON reportの`usage.input_tokens`または`usage.output_tokens`は`null`（全batch未報告）になります。部分報告では報告済み合計と`input_tokens_complete` / `output_tokens_complete`、`*_missing_batches`が残ります。未報告を0 tokenと解釈しないでください。テキスト表示でも未報告batch数が示されます。
 
 ## 12. CI利用
 

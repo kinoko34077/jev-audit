@@ -23,6 +23,9 @@ optional, but it wraps the same required Jev-backed Audit Core when enabled.
    closed at their respective boundaries.
 7. changed-only regular files include bounded Git diff context when available;
    untracked and non-Git focused scans remain content-only.
+8. Reports distinguish file-entry skips from excluded directories, preserve
+   requested/effective worker provenance, and expose incomplete provider token
+   usage without treating it as zero.
 
 ## Ownership boundary
 

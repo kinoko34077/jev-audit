@@ -17,11 +17,18 @@ class ReportingTests(unittest.TestCase):
             batch_audits=(),
             aggregate={
                 "overall": {"status": "unknown"},
-                "usage": {"input_tokens": None, "output_tokens": 4},
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 4,
+                    "input_tokens_complete": False,
+                    "output_tokens_complete": True,
+                    "input_tokens_missing_batches": 2,
+                    "output_tokens_missing_batches": 0,
+                },
             },
         )
         text = format_report(report)
-        self.assertIn("tokens : input=- output=4", text)
+        self.assertIn("tokens : input=12+ [2 batches unreported] output=4", text)
 
     def test_report_exposes_driver_rework_unknown_and_wall_clock(self):
         result = JevResult(
@@ -120,19 +127,24 @@ class ReportingTests(unittest.TestCase):
                 "char_coverage": 0.5,
                 "files_truncated": 1,
                 "files_skipped": 1,
+                "file_entries_skipped": 1,
+                "excluded_directory_count": 2,
             },
+            excluded_directories=(".kinotch", "src/.venv"),
             provenance={
-                "tool_version": "0.2.9",
+                "tool_version": "0.2.10",
                 "resolved_model": "jev-1.13.0",
                 "git_head_sha": "abc123",
             },
         )
 
         text = format_report(report)
-        self.assertIn("coverage: chars=50/100 (50.0%)", text)
+        self.assertIn("coverage: scanned chars=50/100 (50.0%)", text)
         self.assertIn("truncated=1", text)
-        self.assertIn("skipped=1", text)
-        self.assertIn("provenance: tool=0.2.9 model=jev-1.13.0 git=abc123", text)
+        self.assertIn("file_entries_skipped=1", text)
+        self.assertIn("directories_excluded=2", text)
+        self.assertIn("excluded directories: .kinotch, src/.venv", text)
+        self.assertIn("provenance: tool=0.2.10 model=jev-1.13.0 git=abc123", text)
 
 
 if __name__ == "__main__":

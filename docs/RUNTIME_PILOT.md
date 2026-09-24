@@ -13,6 +13,10 @@ Status: evaluation complete; Runtime remains optional and provisional
 - When the explicit opt-in is active and the pinned `kinotch-runtime` package is
   importable, the bridge registers and executes `repo.audit` through the Runtime
   `ActionRegistry`.
+- If explicit opt-in is active but the package or one of its imports is missing,
+  the bridge raises `DEPENDENCY_ERROR` and never silently falls back to the
+  direct path. Install the pinned source dependency with
+  `python -m pip install -r requirements-pilot.txt`.
 - The Runtime Pilot remains a boundary around the shared Audit Core; current
   scanner, batching, reporting, and MCP fixes are used by both direct and
   Runtime paths.
@@ -21,13 +25,16 @@ Status: evaluation complete; Runtime remains optional and provisional
 
 - The original Pilot evidence below is retained as a historical record from
   before the error-bridge hardening; it is not a current CI claim.
-- Current local core suite: 82 tests ran with one optional Runtime integration
-  test skipped when the Pilot requirements file is absent.
-- Current local optional-integration suite: 82 tests passed with
-  `requirements-pilot.txt`, `mcp`, and `typesafe-sdk` installed; the actual Runtime
-  kernel integration test executed.
+- Current local suite: 101 tests ran (99 passed, two newline-path tests skipped
+  on Windows because that filesystem cannot create newline filenames).
+- The optional-integration environment has `requirements-pilot.txt`, `mcp`, and
+  `typesafe-sdk` installed; the actual Runtime kernel integration test executes
+  there.
 - Current bridge tests cover known provider error preservation and unknown
   exception redaction through the Runtime kernel's `INTERNAL_ERROR` contract.
+- Runtime bridge tests also cover explicit opt-in with a missing Runtime package
+  or missing internal dependency returning `DEPENDENCY_ERROR` instead of direct
+  fallback.
 - Runtime repository Contract suite: 18 tests passed.
 - Direct CLI live run: 14 files, 2 batches, `review`, exit 0.
 - Runtime CLI live run: 14 files, 2 batches, `review`, exit 0.

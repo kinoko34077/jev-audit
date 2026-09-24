@@ -1,4 +1,5 @@
 import importlib.util
+import builtins
 import os
 import unittest
 from pathlib import Path
@@ -75,6 +76,34 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertIsNone(runtime_bridge._load_runtime())
         with patch.dict(os.environ, {"JEV_AUDIT_RUNTIME": "1"}, clear=True):
             self.assertTrue(runtime_bridge._runtime_opted_in())
+
+    def test_runtime_opt_in_without_package_fails_explicitly(self):
+        original_import = builtins.__import__
+
+        def missing_runtime(name, *args, **kwargs):
+            if name == "kinotch_runtime":
+                raise ModuleNotFoundError("No module named 'kinotch_runtime'", name=name)
+            return original_import(name, *args, **kwargs)
+
+        with patch.dict(os.environ, {"JEV_AUDIT_RUNTIME": "1"}, clear=True), patch.object(
+            builtins, "__import__", side_effect=missing_runtime
+        ):
+            with self.assertRaisesRegex(runtime_bridge.RuntimeDependencyError, "not installed"):
+                runtime_bridge._load_runtime()
+
+    def test_runtime_internal_import_failure_does_not_fallback(self):
+        original_import = builtins.__import__
+
+        def missing_dependency(name, *args, **kwargs):
+            if name == "kinotch_runtime":
+                raise ModuleNotFoundError("No module named 'runtime_dependency'", name="runtime_dependency")
+            return original_import(name, *args, **kwargs)
+
+        with patch.dict(os.environ, {"JEV_AUDIT_RUNTIME": "1"}, clear=True), patch.object(
+            builtins, "__import__", side_effect=missing_dependency
+        ):
+            with self.assertRaisesRegex(runtime_bridge.RuntimeDependencyError, "could not be loaded"):
+                runtime_bridge._load_runtime()
 
     def test_without_runtime_it_uses_the_existing_audit_core(self):
         expected = object()

@@ -104,6 +104,54 @@ class MCPPathResolutionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Custom profile"):
                     self.mod._resolve_profile(str(profile))
 
+    def test_bundled_profile_is_not_shadowed_by_outside_cwd(self):
+        with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
+            shadow = Path(outside) / "development.json"
+            shadow.write_text("not-json", encoding="utf-8")
+            old = Path.cwd()
+            try:
+                os.chdir(outside)
+                with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": allowed}, clear=False):
+                    self.assertEqual(self.mod._resolve_profile("development"), "development")
+            finally:
+                os.chdir(old)
+
+    def test_allows_custom_profile_inside_allowed_root(self):
+        with TemporaryDirectory() as allowed:
+            profile = Path(allowed) / "custom.json"
+            profile.write_text("{}", encoding="utf-8")
+            with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": allowed}, clear=False):
+                self.assertEqual(self.mod._resolve_profile(str(profile)), str(profile.resolve()))
+
+    def test_rejects_custom_profile_before_reading_outside_root(self):
+        with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
+            profile = Path(outside) / "custom.json"
+            profile.write_text("not-json", encoding="utf-8")
+            with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": allowed}, clear=False), patch.object(
+                Path, "read_text", side_effect=AssertionError("profile bytes must not be read")
+            ):
+                with self.assertRaisesRegex(ValueError, "Custom profile"):
+                    self.mod._resolve_profile(str(profile))
+
+    def test_allows_custom_profile_outside_root_only_with_opt_out(self):
+        with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
+            profile = Path(outside) / "custom.json"
+            profile.write_text("{}", encoding="utf-8")
+            with patch.dict(
+                os.environ,
+                {"JEV_AUDIT_ALLOWED_ROOT": allowed, "JEV_AUDIT_ALLOW_ANY_PATH": "1"},
+                clear=False,
+            ):
+                self.assertEqual(self.mod._resolve_profile(str(profile)), str(profile.resolve()))
+
+    def test_rejects_oversized_custom_profile(self):
+        with TemporaryDirectory() as allowed:
+            profile = Path(allowed) / "large.json"
+            profile.write_bytes(b"x" * (self.mod.MCP_MAX_CUSTOM_PROFILE_BYTES + 1))
+            with patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": allowed}, clear=False):
+                with self.assertRaisesRegex(ValueError, "profile size"):
+                    self.mod._resolve_profile(str(profile))
+
     def test_explicit_any_path_opt_out_is_required_for_outside_root(self):
         with TemporaryDirectory() as allowed, TemporaryDirectory() as outside:
             with patch.dict(

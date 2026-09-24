@@ -40,7 +40,7 @@ def result(
 
 class AggregateTests(unittest.TestCase):
     def test_missing_token_usage_remains_unreported(self):
-        batch = BatchAudit(
+        missing = BatchAudit(
             index=1,
             paths=("a.py",),
             chars=10,
@@ -52,9 +52,60 @@ class AggregateTests(unittest.TestCase):
                 nouls=result().nouls,
             ),
         )
+        reported = BatchAudit(
+            index=2,
+            paths=("b.py",),
+            chars=10,
+            result=result(),
+        )
+        aggregate = aggregate_batches((missing, reported))
+        self.assertEqual(aggregate["usage"]["input_tokens"], 100)
+        self.assertFalse(aggregate["usage"]["input_tokens_complete"])
+        self.assertEqual(aggregate["usage"]["input_tokens_missing_batches"], 1)
+        self.assertTrue(aggregate["usage"]["output_tokens_complete"])
+        self.assertEqual(aggregate["usage"]["output_tokens_missing_batches"], 0)
+
+    def test_all_missing_token_usage_stays_null_with_missing_count(self):
+        batch = BatchAudit(
+            index=1,
+            paths=("a.py",),
+            chars=10,
+            result=JevResult(
+                model="jev-test",
+                elapsed_ms=10.0,
+                usage={"input_tokens": None, "output_tokens": None},
+                choices=result().choices,
+                nouls=result().nouls,
+            ),
+        )
         aggregate = aggregate_batches((batch,))
         self.assertIsNone(aggregate["usage"]["input_tokens"])
+        self.assertIsNone(aggregate["usage"]["output_tokens"])
+        self.assertEqual(aggregate["usage"]["input_tokens_missing_batches"], 1)
+        self.assertEqual(aggregate["usage"]["output_tokens_missing_batches"], 1)
+
+    def test_complete_token_usage_marks_both_dimensions_complete(self):
+        aggregate = aggregate_batches((BatchAudit(index=1, paths=("a.py",), chars=10, result=result()),))
+        self.assertEqual(aggregate["usage"]["input_tokens"], 100)
         self.assertEqual(aggregate["usage"]["output_tokens"], 10)
+        self.assertTrue(aggregate["usage"]["input_tokens_complete"])
+        self.assertTrue(aggregate["usage"]["output_tokens_complete"])
+
+    def test_output_only_missing_usage_is_reported_separately(self):
+        value = result()
+        value = JevResult(
+            model=value.model,
+            elapsed_ms=value.elapsed_ms,
+            usage={"input_tokens": 100, "output_tokens": None},
+            choices=value.choices,
+            nouls=value.nouls,
+        )
+        aggregate = aggregate_batches((BatchAudit(index=1, paths=("a.py",), chars=10, result=value),))
+        self.assertEqual(aggregate["usage"]["input_tokens"], 100)
+        self.assertTrue(aggregate["usage"]["input_tokens_complete"])
+        self.assertIsNone(aggregate["usage"]["output_tokens"])
+        self.assertFalse(aggregate["usage"]["output_tokens_complete"])
+        self.assertEqual(aggregate["usage"]["output_tokens_missing_batches"], 1)
 
     def test_concrete_issue_and_rework_can_raise_red(self):
         batch = BatchAudit(index=1, paths=("a.py",), chars=10, result=result(concrete=0.91, rework=0.81))

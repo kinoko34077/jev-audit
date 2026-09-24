@@ -44,7 +44,10 @@ jobs:
           cache: pip
 
       - name: Install optional integrations and Runtime Pilot
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[mcp]" && python -m pip install -r requirements-pilot.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[mcp]"
+          python -m pip install -r requirements-pilot.txt
 
       - name: Import optional integrations
         run: python -c "import kinotch_runtime, mcp, typesafe_sdk; print('optional imports ok')"
@@ -81,7 +84,8 @@ jobs:
 
       - name: Smoke test generated global launcher
         shell: pwsh
-        run: & "$env:LOCALAPPDATA\jev-audit\bin\jev-audit.cmd" --list-profiles
+        run: |
+          & "$env:LOCALAPPDATA\jev-audit\bin\jev-audit.cmd" --list-profiles
 
       - name: Smoke test MCP import and suite
         shell: pwsh

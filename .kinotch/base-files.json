@@ -12,7 +12,7 @@
     },
     {
       "path": ".github/workflows/verify.yml",
-      "sha256": "ae4ac2882296e238f141db1d46247dd77027411d7ac954622e96ddf85de27f3a"
+      "sha256": "dbee2fee7060837f6f388c28bd828afbe872d8066b4ae860c418f02b2316dbe9"
     },
     {
       "path": ".gitignore",

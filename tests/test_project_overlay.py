@@ -47,6 +47,17 @@ class ProjectOverlayTests(unittest.TestCase):
             self.assertIn("JEV_AUDIT_RUNTIME=1", text, relative)
             self.assertIn("requirements-pilot.txt", text, relative)
 
+    def test_github_actions_use_node24_action_releases(self):
+        root = Path(__file__).parents[1]
+        workflow_text = "\n".join(
+            (root / relative).read_text(encoding="utf-8")
+            for relative in (".github/workflows/tests.yml", ".github/workflows/verify.yml")
+        )
+        self.assertIn("actions/checkout@v7", workflow_text)
+        self.assertIn("actions/setup-python@v7", workflow_text)
+        self.assertNotIn("actions/checkout@v4", workflow_text)
+        self.assertNotIn("actions/setup-python@v5", workflow_text)
+
 
 if __name__ == "__main__":
     unittest.main()

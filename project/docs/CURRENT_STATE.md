@@ -3,7 +3,7 @@
 Base version: `0.3.8`
 Project version: `0.2.12`
 
-Last verified: 2026-09-24 — Git diff subprocess boundary finish
+Last verified: 2026-09-25 — GitHub Actions Node 24 action migration
 
 ## Implemented
 
@@ -35,6 +35,8 @@ Last verified: 2026-09-24 — Git diff subprocess boundary finish
 - Git path enumeration uses NUL-delimited output for newline-safe filenames
 - CLI clean changed-only no-op does not require an API key because no Jev request
   is issued
+- GitHub Actions use the Node 24 based `actions/checkout@v7` and
+  `actions/setup-python@v7` releases
 
 ## Default state
 
@@ -62,5 +64,5 @@ Last verified: 2026-09-24 — Git diff subprocess boundary finish
 - `knt base-check`
 - `knt setup`
 - `knt verify`
-- `python -m unittest discover -s tests -v` (107 tests; Windows skips the two
+- `python -m unittest discover -s tests -v` (108 tests; Windows skips the two
   newline-filename cases)

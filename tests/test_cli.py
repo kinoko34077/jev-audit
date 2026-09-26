@@ -66,5 +66,24 @@ class CLITests(unittest.TestCase):
         self.assertIn("DEPENDENCY_ERROR", error_output.getvalue())
 
 
+    def test_base_ref_is_forwarded_with_changed_only(self):
+        report = type("Report", (), {"status": "clear"})()
+        with patch.object(cli, "run_audit", return_value=report) as run_audit, patch.object(
+            cli, "format_report", return_value="clear"
+        ), redirect_stdout(io.StringIO()):
+            exit_code = cli.main([".", "--changed-only", "--base-ref", "base123"])
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(run_audit.call_args.kwargs["changed_only"])
+        self.assertEqual(run_audit.call_args.kwargs["base_ref"], "base123")
+
+    def test_base_ref_without_changed_only_uses_existing_invalid_input_exit(self):
+        error_output = io.StringIO()
+        with patch.object(
+            cli, "run_audit", side_effect=ValueError("base_ref requires changed_only=True")
+        ), redirect_stderr(error_output):
+            exit_code = cli.main([".", "--base-ref", "base123"])
+        self.assertEqual(exit_code, 2)
+        self.assertIn("base_ref requires changed_only=True", error_output.getvalue())
+
 if __name__ == "__main__":
     unittest.main()

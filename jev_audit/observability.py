@@ -23,19 +23,15 @@ def record_completed_audit(
     timestamp: str | None = None,
 ) -> dict | None:
     try:
-        ids = fixture_ids()
-        state = read_history_state(history_path, ids)
+        state = read_history_state(history_path, fixture_ids())
         recent = list(state.recent_scores)
-        next_fixture_index = state.next_fixture_index
         if report.batches > 0:
             model = str(report.provenance.get("resolved_model") or report.model)
-            observation = benchmark_runner(next_fixture_index, model)
+            observation = benchmark_runner(state.next_fixture_index, model)
             recent.append(observation.score)
             recent = recent[-10:]
-            next_fixture_index = (next_fixture_index + 1) % len(ids) if ids else 0
             benchmark = {
                 "fixture_id": observation.fixture_id,
-                "next_fixture_id": ids[next_fixture_index] if ids else None,
                 "score": observation.score,
                 "error": observation.error,
                 "recent_scores": recent,
@@ -44,7 +40,6 @@ def record_completed_audit(
         else:
             benchmark = {
                 "fixture_id": None,
-                "next_fixture_id": ids[next_fixture_index] if ids else None,
                 "score": None,
                 "error": None,
                 "recent_scores": recent,

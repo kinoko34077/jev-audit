@@ -47,7 +47,6 @@ def read_history_state(
     indexes = {fixture_id: index for index, fixture_id in enumerate(fixture_ids)}
     scores: list[int | None] = []
     last_index: int | None = None
-    explicit_next_index: int | None = None
     for line in _read_tail(Path(path)).splitlines():
         try:
             record = json.loads(line)
@@ -58,26 +57,15 @@ def read_history_state(
         benchmark = record.get("benchmark")
         if not isinstance(benchmark, dict):
             continue
-
-        recent_scores = benchmark.get("recent_scores")
-        if isinstance(recent_scores, list) and all(value in (0, 100, None) for value in recent_scores):
-            scores = list(recent_scores[-ROLLING_WINDOW:])
-
-        next_fixture_id = benchmark.get("next_fixture_id")
-        if next_fixture_id in indexes:
-            explicit_next_index = indexes[next_fixture_id]
-
         fixture_id = benchmark.get("fixture_id")
+        if fixture_id not in indexes:
+            continue
         score = benchmark.get("score")
-        if fixture_id in indexes and score in (0, 100, None):
-            last_index = indexes[fixture_id]
-            if not isinstance(recent_scores, list):
-                scores.append(score)
-
-    if explicit_next_index is not None:
-        next_index = explicit_next_index
-    else:
-        next_index = 0 if last_index is None or not fixture_ids else (last_index + 1) % len(fixture_ids)
+        if score not in (0, 100, None):
+            continue
+        last_index = indexes[fixture_id]
+        scores.append(score)
+    next_index = 0 if last_index is None or not fixture_ids else (last_index + 1) % len(fixture_ids)
     return HistoryState(
         next_fixture_index=next_index,
         recent_scores=tuple(scores[-ROLLING_WINDOW:]),
@@ -116,7 +104,6 @@ def build_history_record(
     }
     safe_benchmark = {
         "fixture_id": benchmark.get("fixture_id"),
-        "next_fixture_id": benchmark.get("next_fixture_id"),
         "score": benchmark.get("score"),
         "error": benchmark.get("error"),
         "recent_scores": list(benchmark.get("recent_scores", []))[-ROLLING_WINDOW:],

@@ -1,4 +1,4 @@
-import os
+﻿import os
 import shutil
 import subprocess
 import tempfile
@@ -117,13 +117,13 @@ class ScannerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             subprocess.run(["git", "init", "-q", str(root)], check=True)
-            target = root / "日本語.md"
-            target.write_text("監査対象", encoding="utf-8")
-            subprocess.run(["git", "-C", str(root), "add", "日本語.md"], check=True)
+            target = root / "譌･譛ｬ隱・md"
+            target.write_text("逶｣譟ｻ蟇ｾ雎｡", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "譌･譛ｬ隱・md"], check=True)
 
             result = scan_directory(root, ScanOptions())
             paths = {item.path for item in result.files}
-            self.assertIn("日本語.md", paths)
+            self.assertIn("譌･譛ｬ隱・md", paths)
 
     @unittest.skipUnless(shutil.which("git"), "git is required for this test")
     def test_changed_only_handles_repo_without_head(self):
@@ -374,7 +374,7 @@ class ScannerTests(unittest.TestCase):
                         args,
                         1,
                         stdout="",
-                        stderr="fatal: révision introuvable",
+                        stderr="fatal: rﾃｩvision introuvable",
                     )
                 if args == ("ls-files", "-co", "--exclude-standard", "-z"):
                     return subprocess.CompletedProcess(args, 0, stdout="new.py\0", stderr="")
@@ -406,5 +406,91 @@ class ScannerTests(unittest.TestCase):
             self.assertEqual(result.git.get("deleted_paths"), ("deleted.py",))
 
 
+class ExplicitBaseScannerTests(unittest.TestCase):
+    def _init_repo(self, root: Path) -> None:
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.com"], check=True)
+        subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
+
+    def _commit(self, root: Path, message: str) -> str:
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", message], check=True)
+        return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_explicit_base_reads_head_content_and_base_to_head_diff(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._init_repo(root)
+            target = root / "changed.py"
+            target.write_text("value = 'base'\n", encoding="utf-8")
+            base = self._commit(root, "base")
+            target.write_text("value = 'head'\n", encoding="utf-8")
+            head = self._commit(root, "head")
+            result = scan_directory(root, ScanOptions(changed_only=True, base_ref=base))
+        self.assertEqual([item.path for item in result.files], ["changed.py"])
+        self.assertEqual(result.files[0].content.strip(), "value = 'head'")
+        self.assertIn("-value = 'base'", result.files[0].change)
+        self.assertIn("+value = 'head'", result.files[0].change)
+        self.assertEqual(result.git.get("base_sha"), base)
+        self.assertEqual(result.git.get("head_sha"), head)
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_explicit_base_includes_new_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._init_repo(root)
+            (root / "seed.py").write_text("seed = 1\n", encoding="utf-8")
+            base = self._commit(root, "base")
+            (root / "new.py").write_text("new = 1\n", encoding="utf-8")
+            self._commit(root, "head")
+            result = scan_directory(root, ScanOptions(changed_only=True, base_ref=base))
+        self.assertEqual([item.path for item in result.files], ["new.py"])
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_explicit_base_reports_deleted_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._init_repo(root)
+            target = root / "deleted.py"
+            target.write_text("gone = 1\n", encoding="utf-8")
+            base = self._commit(root, "base")
+            target.unlink()
+            self._commit(root, "head")
+            result = scan_directory(root, ScanOptions(changed_only=True, base_ref=base))
+        self.assertEqual(result.files, ())
+        self.assertEqual(result.git.get("deleted_paths"), ("deleted.py",))
+        self.assertEqual(result.skipped_counts.get("deleted_change_without_content"), 1)
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_explicit_base_equal_head_is_clean(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._init_repo(root)
+            (root / "same.py").write_text("same = 1\n", encoding="utf-8")
+            head = self._commit(root, "only")
+            result = scan_directory(root, ScanOptions(changed_only=True, base_ref=head))
+        self.assertEqual(result.files, ())
+        self.assertEqual(result.git.get("base_sha"), head)
+        self.assertEqual(result.git.get("head_sha"), head)
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for this test")
+    def test_explicit_base_rejects_invalid_ref(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._init_repo(root)
+            (root / "same.py").write_text("same = 1\n", encoding="utf-8")
+            self._commit(root, "only")
+            with self.assertRaises(RuntimeError):
+                scan_directory(root, ScanOptions(changed_only=True, base_ref="missing-ref"))
+
+    def test_base_ref_requires_changed_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with self.assertRaisesRegex(ValueError, "base_ref"):
+                scan_directory(root, ScanOptions(base_ref="HEAD"))
+
 if __name__ == "__main__":
     unittest.main()
+
+

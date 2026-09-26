@@ -72,6 +72,7 @@ MAX_CHANGE_CHARS = 20_000
 @dataclass(frozen=True)
 class ScanOptions:
     changed_only: bool = False
+    base_ref: str | None = None
     max_file_chars: int = 12_000
     max_file_bytes: int = 2_000_000
     max_files: int | None = None
@@ -151,6 +152,16 @@ def _git_head_sha(root: Path) -> str | None:
     return value or None
 
 
+def _git_resolve_commit(root: Path, ref: str) -> str:
+    result = _run_git(root, "rev-parse", "--verify", f"{ref}^{{commit}}")
+    if result.returncode != 0:
+        raise _git_failure(f"git rev-parse {ref}", result)
+    value = result.stdout.strip()
+    if not value:
+        raise RuntimeError(f"git rev-parse {ref} returned an empty commit SHA")
+    return value
+
+
 def _parse_git_nul_paths(output: str) -> list[str]:
     """Parse Git's NUL-delimited path output without newline ambiguity."""
     return [part for part in output.split("\0") if part]
@@ -203,22 +214,26 @@ def _git_stage_modes(root: Path, names: set[str]) -> dict[str, str]:
     return _parse_git_stage_modes(result.stdout)
 
 
-def _git_change_by_path(root: Path, names: set[str]) -> dict[str, str]:
+def _git_change_by_path(
+    root: Path, names: set[str], *, base_sha: str | None = None
+) -> dict[str, str]:
     """Return bounded before/after hunks for changed regular files."""
     if not names:
         return {}
+    diff_range = (base_sha, "HEAD") if base_sha is not None else ("HEAD",)
     result = _run_git(
         root,
         "diff",
         "--no-ext-diff",
         "--no-textconv",
         "--unified=80",
-        "HEAD",
+        *diff_range,
         "--",
         *sorted(names),
     )
+    operation = f"git diff {base_sha} HEAD" if base_sha is not None else "git diff HEAD"
     if result.returncode != 0:
-        raise _git_failure("git diff HEAD", result)
+        raise _git_failure(operation, result)
 
     changes: dict[str, str] = {}
     section: list[str] = []
@@ -227,8 +242,8 @@ def _git_change_by_path(root: Path, names: set[str]) -> dict[str, str]:
     def flush() -> None:
         if current_path is None or not section:
             return
-        text = "".join(section)
-        changes[current_path] = text[:MAX_CHANGE_CHARS]
+        value = "".join(section)
+        changes[current_path] = value[:MAX_CHANGE_CHARS]
 
     for line in result.stdout.splitlines(keepends=True):
         if line.startswith("diff --git "):
@@ -246,11 +261,12 @@ def _git_change_by_path(root: Path, names: set[str]) -> dict[str, str]:
 
 
 def _git_candidates(
-    root: Path, changed_only: bool
+    root: Path, changed_only: bool, base_ref: str | None = None
 ) -> tuple[
     list[Path],
     tuple[str, ...],
     dict[str, tuple[str, ...]],
+    str | None,
     str | None,
     dict[str, str],
     tuple[str, ...],
@@ -274,11 +290,34 @@ def _git_candidates(
         return None
 
     deleted_names: set[str] = set()
+    base_sha: str | None = None
     head_exists: bool | None = None
     if changed_only:
         head_exists = _git_head_exists(root)
-        if not head_exists:
-            # HEADがまだ無い新規repoでは、stagedファイルも含めて現在存在する管理対象候補を拾う。
+        if base_ref is not None:
+            if not head_exists:
+                raise ValueError("base_ref requires an existing HEAD commit")
+            base_sha = _git_resolve_commit(root, base_ref)
+            changed = _run_git(
+                root,
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--name-only",
+                "-z",
+                base_sha,
+                "HEAD",
+                "--",
+            )
+            if changed.returncode != 0:
+                raise _git_failure(f"git diff {base_sha} HEAD", changed)
+            changed_names = set(_parse_git_nul_paths(changed.stdout))
+            names = changed_names
+            deleted_names = {
+                name for name in changed_names
+                if name.strip() and not os.path.lexists(str(root / name))
+            }
+        elif not head_exists:
             listed = _run_git(root, "ls-files", "-co", "--exclude-standard", "-z")
             if listed.returncode != 0:
                 raise _git_failure("git ls-files", listed)
@@ -314,9 +353,6 @@ def _git_candidates(
     result: list[Path] = []
     non_regular_names: set[str] = set()
     skipped_paths: dict[str, list[str]] = defaultdict(list)
-    # A changed-only Git scan must remain bounded by the Git candidate set.
-    # Walking the whole repository here would make a small diff traverse every
-    # arbitrary gitignored dataset/cache tree just to produce metadata.
     excluded_directories: set[str] = set()
     if not changed_only:
         excluded_directories.update(_collect_excluded_directories(root))
@@ -349,6 +385,7 @@ def _git_candidates(
         change_by_path = _git_change_by_path(
             root,
             {path.relative_to(root).as_posix() for path in result},
+            base_sha=base_sha,
         )
     head_sha = None if head_exists is False else _git_head_sha(root)
     return (
@@ -356,6 +393,7 @@ def _git_candidates(
         tuple(sorted(deleted_names)),
         {reason: tuple(sorted(paths)) for reason, paths in skipped_paths.items()},
         head_sha,
+        base_sha,
         change_by_path,
         tuple(sorted(excluded_directories)),
     )
@@ -437,13 +475,17 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
         if value is not None and (type(value) is not int or value <= 0):
             raise ValueError(f"{name} must be > 0 or None")
 
-    git_result = _git_candidates(root, options.changed_only)
+    if options.base_ref is not None and not options.changed_only:
+        raise ValueError("base_ref requires changed_only=True")
+
+    git_result = _git_candidates(root, options.changed_only, options.base_ref)
     is_git_repo = git_result is not None
     if git_result is None:
         candidates, excluded_directories = _walk_candidates(root)
         deleted_paths: tuple[str, ...] = ()
         pre_skipped_paths: dict[str, tuple[str, ...]] = {}
         head_sha = None
+        base_sha = None
         change_by_path: dict[str, str] = {}
     else:
         (
@@ -451,6 +493,7 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
             deleted_paths,
             pre_skipped_paths,
             head_sha,
+            base_sha,
             change_by_path,
             excluded_directories,
         ) = git_result
@@ -521,12 +564,16 @@ def scan_directory(root: Path, options: ScanOptions) -> ScanResult:
             )
         )
 
+    git_metadata = {"is_git_repo": is_git_repo, "deleted_paths": deleted_paths, "head_sha": head_sha}
+    if base_sha is not None:
+        git_metadata["base_sha"] = base_sha
+
     return ScanResult(
         root=str(root),
         files=tuple(snapshots),
         skipped_counts=dict(sorted(skipped.items())),
         skipped_sensitive_paths=tuple(sorted(sensitive_paths)),
-        git={"is_git_repo": is_git_repo, "deleted_paths": deleted_paths, "head_sha": head_sha},
+        git=git_metadata,
         skipped_paths_by_reason={
             reason: tuple(sorted(paths)) for reason, paths in skipped_paths.items()
         },

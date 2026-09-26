@@ -418,5 +418,47 @@ class AuditorTests(unittest.TestCase):
         self.assertEqual(report.provenance["workers"], 1)
 
 
+    def test_base_ref_requires_changed_only_before_scan(self):
+        with patch("jev_audit.auditor.scan_directory") as scan:
+            with self.assertRaisesRegex(ValueError, "base_ref"):
+                audit_directory(".", base_ref="abc123")
+        scan.assert_not_called()
+
+    def test_explicit_base_is_forwarded_and_reported_in_provenance(self):
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=(),
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={
+                "is_git_repo": True,
+                "deleted_paths": (),
+                "head_sha": "head123",
+                "base_sha": "base123",
+            },
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan) as scan, patch(
+            "jev_audit.auditor._audit_one"
+        ) as audit_one:
+            report = audit_directory(".", changed_only=True, base_ref="base-ref")
+
+        options = scan.call_args.args[1]
+        self.assertEqual(options.base_ref, "base-ref")
+        self.assertEqual(report.provenance["git_head_sha"], "head123")
+        self.assertEqual(report.provenance["git_base_sha"], "base123")
+        audit_one.assert_not_called()
+
+    def test_no_base_ref_does_not_add_base_provenance(self):
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=(),
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": True, "deleted_paths": (), "head_sha": "head123"},
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan):
+            report = audit_directory(".", changed_only=True)
+        self.assertNotIn("git_base_sha", report.provenance)
+
 if __name__ == "__main__":
     unittest.main()

@@ -151,7 +151,7 @@ def _provenance(
     max_total_chars: int | None,
     max_batches: int | None,
 ) -> dict[str, Any]:
-    return {
+    provenance = {
         "tool_version": __version__,
         "requested_model": requested_model,
         "resolved_model": _resolve_model(requested_model),
@@ -176,6 +176,10 @@ def _provenance(
         "max_batches": max_batches,
         "git_head_sha": scan.git.get("head_sha"),
     }
+    base_sha = scan.git.get("base_sha")
+    if base_sha is not None:
+        provenance["git_base_sha"] = base_sha
+    return provenance
 
 
 def audit_directory(
@@ -183,6 +187,7 @@ def audit_directory(
     *,
     profile: str = "development",
     changed_only: bool = False,
+    base_ref: str | None = None,
     max_file_chars: int = 12_000,
     max_file_bytes: int = 2_000_000,
     batch_chars: int = 32_000,
@@ -209,6 +214,8 @@ def audit_directory(
         raise ValueError("workers must be > 0")
     if workers > MAX_WORKERS:
         raise ValueError(f"workers must be <= {MAX_WORKERS}")
+    if base_ref is not None and not changed_only:
+        raise ValueError("base_ref requires changed_only=True")
     requested_workers = workers
 
     started = time.perf_counter()
@@ -219,6 +226,7 @@ def audit_directory(
         target,
         ScanOptions(
             changed_only=changed_only,
+            base_ref=base_ref,
             max_file_chars=max_file_chars,
             max_file_bytes=max_file_bytes,
             max_files=max_files,

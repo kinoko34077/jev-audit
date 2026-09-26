@@ -64,9 +64,10 @@ class GatewayTests(unittest.TestCase):
         with patch.object(jev_gateway, "_sdk", return_value=(None, None, FakeClient)), patch.object(
             jev_gateway, "_build_questions", return_value={}
         ), patch.dict("os.environ", {}, clear=True):
-            jev_gateway.audit_with_jev({}, object())
+            jev_gateway.audit_with_jev({}, object(), timeout=45.0)
 
         self.assertEqual(captured["model"], "jev-1.13.0")
+        self.assertEqual(captured["timeout"], 45.0)
 
     def test_questions_are_minimal_and_rules_feed_local_status(self):
         profile = AuditProfile(

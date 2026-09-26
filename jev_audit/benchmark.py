@@ -110,6 +110,7 @@ def run_benchmark(
             _fixture_state(fixture),
             BENCHMARK_PROFILE,
             model=model,
+            timeout=45.0,
         )
         return BenchmarkObservation(
             fixture_id=fixture.id,

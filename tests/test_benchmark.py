@@ -54,8 +54,8 @@ class BenchmarkTests(unittest.TestCase):
 
     def test_runner_uses_fixed_profile_and_real_resolved_model_once(self):
         calls = []
-        def fake_audit(state, profile, *, model=None):
-            calls.append((state, profile.name, model))
+        def fake_audit(state, profile, *, model=None, timeout=None):
+            calls.append((state, profile.name, model, timeout))
             return result("clear")
         observation = run_benchmark(0, "jev-1.13.0", audit_func=fake_audit)
         self.assertEqual(observation.fixture_id, "clear-code")
@@ -64,6 +64,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][1], "benchmark-v1")
         self.assertEqual(calls[0][2], "jev-1.13.0")
+        self.assertEqual(calls[0][3], 45.0)
 
     def test_runner_maps_provider_failure_to_null_without_raw_message(self):
         def failing(*args, **kwargs):

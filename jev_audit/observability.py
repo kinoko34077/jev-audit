@@ -10,6 +10,7 @@ from .history import (
     build_history_record,
     read_history_state,
     rolling_mean,
+    ROLLING_WINDOW,
 )
 from .models import AuditReport
 
@@ -29,7 +30,7 @@ def record_completed_audit(
             model = str(report.provenance.get("resolved_model") or report.model)
             observation = benchmark_runner(state.next_fixture_index, model)
             recent.append(observation.score)
-            recent = recent[-10:]
+            recent = recent[-ROLLING_WINDOW:]
             benchmark = {
                 "fixture_id": observation.fixture_id,
                 "score": observation.score,

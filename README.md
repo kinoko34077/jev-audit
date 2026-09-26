@@ -246,3 +246,9 @@ GREENは安全証明ではありません。riskの値は正解率やrepo品質�
 Jevの判断は各batchへ渡された情報に基づきます。短いREADMEやINDEXで正本と関連ファイルの場所を示し、currentとlegacyを区別し、日常利用では `--changed-only` やmodule単位のfocused scanで関連contextを集めます。root INDEXが全batchへ自動共有されるわけではありません。
 
 context設計、batchやskipの限界、custom profile、CI、MCP、token効率などは[詳細な利用ガイド](docs/USAGE_GUIDE.md)を参照してください。
+
+## Automatic local history and rolling benchmark
+
+Each completed Local CLI or Local STDIO MCP audit appends one compact JSONL record to `~/.jev-audit/history.jsonl`. This automatic history is separate from explicit `--save` full-report output and does not change `--json`, `--save`, `--fail-on`, or MCP AuditReport schemas. Compact history excludes audited source/diff text, audited file paths, secrets, and raw provider responses.
+
+Provider-backed audits run at most one small fixed synthetic benchmark fixture in round-robin order. Scores are `100` for an expected result, `0` for a mismatch, and `null` for benchmark/provider failure. Up to 10 recent observations are retained in each history record; `null` stays visible but is excluded from the numeric mean. Clean `--changed-only` no-op remains provider-call-free and does not run a benchmark. Benchmark or history persistence failure never changes the real audit result or exit semantics.

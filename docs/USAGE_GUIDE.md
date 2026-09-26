@@ -344,3 +344,11 @@ providerがtoken usageを返さない場合、JSON reportの`usage.input_tokens`
 | spec mismatchが多い | current / legacy / archiveとSSOTを確認 |
 | CI導入初期 | `--fail-on never`または`--fail-on rework`から始める |
 | 機密repository | 外部API送信が認められるか先に確認 |
+
+## Automatic Local history / rolling benchmark
+
+Local CLI and Local STDIO MCP share one post-audit observability path. After a completed AuditReport, Jev appends a compact JSONL record to the user-level `~/.jev-audit/history.jsonl`. The record contains aggregate/provenance metadata such as timestamp, surface, profile, status/risk, file and batch counts, wall-clock time, resolved model, tool version, Git HEAD SHA, token usage/completeness, and benchmark observation. It intentionally omits audited source/diff text, audited file paths, secrets, raw provider bodies, and benchmark fixture bodies.
+
+For a provider-backed audit, one of eight fixed synthetic fixtures is selected in round-robin order and evaluated with the same resolved model under a fixed benchmark profile. A matching expected outcome scores `100`, a mismatch scores `0`, and benchmark/provider failure records `null`. Each record embeds at most 10 recent benchmark observations; numeric mean excludes `null`. A clean changed-only no-op does not make a benchmark provider call. Benchmark failure, malformed prior history, or history append failure does not alter the real AuditReport, CLI exit semantics, or MCP response schema.
+
+This feature adds no dashboard, calendar aggregation, upload/sync, source retention, or history rotation policy.

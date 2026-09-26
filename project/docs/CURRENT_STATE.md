@@ -35,6 +35,7 @@ Last verified: 2026-09-25 — GitHub Actions Node 24 action migration
 - Git path enumeration uses NUL-delimited output for newline-safe filenames
 - CLI clean changed-only no-op does not require an API key because no Jev request
   is issued
+- Changed-only audits can compare an explicit base commit to the checked-out current HEAD via `--base-ref`; reports preserve exact `git_base_sha` and `git_head_sha`, and equal base/head remains provider-free
 - GitHub Actions use the Node 24 based `actions/checkout@v7` and
   `actions/setup-python@v7` releases
 
@@ -64,5 +65,5 @@ Last verified: 2026-09-25 — GitHub Actions Node 24 action migration
 - `knt base-check`
 - `knt setup`
 - `knt verify`
-- `python -m unittest discover -s tests -v` (108 tests; Windows skips the two
+- `python -m unittest discover -s tests -v` (120 tests; Windows skips the two
   newline-filename cases)

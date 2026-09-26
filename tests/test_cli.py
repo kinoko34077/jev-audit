@@ -90,5 +90,14 @@ class CLITests(unittest.TestCase):
         self.assertIn("current HEAD", help_text)
         self.assertIn("requires --changed-only", help_text)
 
+    def test_completed_audit_is_recorded_as_cli_surface(self):
+        report = type("Report", (), {"status": "clear"})()
+        with patch.object(cli, "run_audit", return_value=report), patch.object(
+            cli, "record_completed_audit"
+        ) as record, patch.object(cli, "format_report", return_value="clear"), redirect_stdout(io.StringIO()):
+            exit_code = cli.main(["."])
+        self.assertEqual(exit_code, 0)
+        record.assert_called_once_with(report, surface="cli")
+
 if __name__ == "__main__":
     unittest.main()

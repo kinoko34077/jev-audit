@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .profiles import available_profiles, resolve_profile_reference
+from .observability import record_completed_audit
 from .runtime_bridge import run_audit
 
 
@@ -172,7 +173,7 @@ def _server():
             max_total_chars,
             max_batches,
         )
-        return run_audit(
+        report = run_audit(
             target,
             profile=profile,
             changed_only=changed_only,
@@ -184,7 +185,9 @@ def _server():
             max_files=max_files,
             max_total_chars=max_total_chars,
             max_batches=max_batches,
-        ).to_dict()
+        )
+        record_completed_audit(report, surface="local_mcp")
+        return report.to_dict()
 
     @mcp.tool()
     def list_profiles() -> list[str]:

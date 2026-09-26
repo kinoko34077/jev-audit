@@ -204,5 +204,19 @@ class MCPPathResolutionTests(unittest.TestCase):
             self.assertTrue(captured["kwargs"]["changed_only"])
 
 
+    def test_tool_records_completed_audit_as_local_mcp_surface(self):
+        class _Report:
+            def to_dict(self):
+                return {"ok": True}
+        report = _Report()
+        tool = self.mod.mcp.tools["audit_directory"]
+        with TemporaryDirectory() as root, patch.object(self.mod, "run_audit", return_value=report), patch.object(
+            self.mod, "record_completed_audit"
+        ) as record, patch.dict(os.environ, {"JEV_AUDIT_ALLOWED_ROOT": root}, clear=False):
+            result = tool(path=root)
+        self.assertEqual(result, {"ok": True})
+        record.assert_called_once_with(report, surface="local_mcp")
+
+
 if __name__ == "__main__":
     unittest.main()

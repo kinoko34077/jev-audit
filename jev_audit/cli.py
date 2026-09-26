@@ -12,6 +12,7 @@ from .auditor import (
     MAX_WORKERS,
 )
 from .profiles import available_profiles
+from .observability import record_completed_audit
 from .reporting import format_report, write_json
 from .runtime_bridge import run_audit
 
@@ -89,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
+
+    record_completed_audit(report, surface="cli")
 
     if args.save:
         try:

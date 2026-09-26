@@ -190,6 +190,7 @@ def audit_with_jev(
     profile: AuditProfile,
     *,
     model: str | None = None,
+    timeout: float | None = None,
 ) -> JevResult:
     _, _, TypeSafeClient = _sdk()
     questions = _build_questions(profile)
@@ -200,6 +201,7 @@ def audit_with_jev(
             state=state,
             questions=questions,
             model=_resolve_model(model),
+            timeout=timeout,
         )
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     return _serialize_response(response, elapsed_ms)

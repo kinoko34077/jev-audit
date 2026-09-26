@@ -43,6 +43,50 @@ class AuditorTests(unittest.TestCase):
         )
         self.assertEqual(_batch_state(batch)["files"][0]["change"], batch.files[0].change)
 
+    def test_changed_only_trims_diff_to_batch_limit_before_coverage(self):
+        item = FileSnapshot(
+            path="changed.py",
+            content="x" * 12_000,
+            chars=12_000,
+            original_chars=12_000,
+            truncated=False,
+            change="d" * 20_000,
+        )
+        fake_scan = ScanResult(
+            root="C:/repo",
+            files=(item,),
+            skipped_counts={},
+            skipped_sensitive_paths=(),
+            git={"is_git_repo": True, "deleted_paths": (), "head_sha": "head"},
+        )
+        fake_result = JevResult(
+            model="jev-1.13.0",
+            elapsed_ms=1.0,
+            usage={"input_tokens": 1, "output_tokens": 1},
+            choices={
+                "local_status": {
+                    "choice": "clear",
+                    "confidence": 1.0,
+                    "probabilities": {
+                        "clear": 1.0,
+                        "review": 0.0,
+                        "rework": 0.0,
+                        "unknown": 0.0,
+                    },
+                }
+            },
+            nouls={"concrete_issue": 0.0, "spec_mismatch": 0.0, "regression_risk": 0.0},
+        )
+        with patch("jev_audit.auditor.scan_directory", return_value=fake_scan), patch(
+            "jev_audit.auditor.audit_with_jev", return_value=fake_result
+        ):
+            report = audit_directory(".", changed_only=True, workers=1)
+
+        self.assertEqual(report.batches, 1)
+        self.assertLess(report.coverage["change_chars"], len(item.change))
+        sent_cost = report.coverage["sent_chars"] + len(item.path) + 32
+        self.assertLessEqual(sent_cost, 32_000)
+
     def test_invalid_limits_are_rejected_before_scan(self):
         with self.assertRaises(ValueError):
             audit_directory(".", max_file_chars=0)

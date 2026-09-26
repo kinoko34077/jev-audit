@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from dataclasses import replace
 from pathlib import Path
 import time
 from typing import Any
 
 from . import __version__
 from .aggregate import aggregate_batches
-from .batching import make_batches
+from .batching import fit_files_to_batch_limit, make_batches
 from .jev_gateway import _resolve_model, audit_with_jev, estimate_question_overhead
 from .models import AuditProfile, AuditReport, Batch, BatchAudit
 from .profiles import load_profile
@@ -233,6 +234,8 @@ def audit_directory(
             max_total_chars=max_total_chars,
         ),
     )
+    if changed_only:
+        scan = replace(scan, files=fit_files_to_batch_limit(scan.files, batch_chars))
     coverage = _coverage(scan)
     truncated_paths = tuple(item.path for item in scan.files if item.truncated)
 

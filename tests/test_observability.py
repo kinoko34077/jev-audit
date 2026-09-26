@@ -44,6 +44,7 @@ class ObservabilityTests(unittest.TestCase):
             self.assertEqual(calls, [(0, "jev-1.13.0")])
             self.assertEqual(record["benchmark"]["recent_scores"], [100])
             self.assertEqual(record["benchmark"]["recent_mean"], 100.0)
+            self.assertEqual(record["benchmark"]["next_fixture_id"], "concrete-issue")
             saved = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(saved["surface"], "cli")
 
@@ -59,6 +60,7 @@ class ObservabilityTests(unittest.TestCase):
             )
             self.assertIsNone(record["benchmark"]["fixture_id"])
             self.assertIsNone(record["benchmark"]["score"])
+            self.assertEqual(record["benchmark"]["next_fixture_id"], "concrete-issue")
             self.assertEqual(record["benchmark"]["recent_scores"], [100])
             self.assertEqual(record["surface"], "local_mcp")
 

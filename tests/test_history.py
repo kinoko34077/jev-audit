@@ -78,6 +78,22 @@ class HistoryTests(unittest.TestCase):
             self.assertEqual(len(state.recent_scores), 10)
             self.assertEqual(state.recent_scores[-1], 100)
 
+    def test_history_state_recovers_rotation_and_scores_from_latest_noop_record(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            row = {
+                "benchmark": {
+                    "fixture_id": None,
+                    "score": None,
+                    "next_fixture_id": "spec-mismatch",
+                    "recent_scores": [100, None, 0],
+                }
+            }
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            state = read_history_state(path, FIXTURE_IDS)
+            self.assertEqual(state.next_fixture_index, 2)
+            self.assertEqual(state.recent_scores, (100, None, 0))
+
     def test_append_writes_exactly_one_jsonl_record(self):
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "nested" / "history.jsonl"

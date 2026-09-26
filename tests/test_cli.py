@@ -85,5 +85,10 @@ class CLITests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertIn("base_ref requires changed_only=True", error_output.getvalue())
 
+    def test_base_ref_help_explains_current_head_and_requirement(self):
+        help_text = " ".join(cli._parser().format_help().split())
+        self.assertIn("current HEAD", help_text)
+        self.assertIn("requires --changed-only", help_text)
+
 if __name__ == "__main__":
     unittest.main()

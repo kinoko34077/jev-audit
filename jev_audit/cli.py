@@ -24,7 +24,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("path", nargs="?", default=".", help="directory to audit (default: current directory)")
     parser.add_argument("--profile", default="development", help="bundled profile name or JSON file path")
     parser.add_argument("--changed-only", action="store_true", help="audit only Git changed/untracked files")
-    parser.add_argument("--base-ref", help="compare explicit base commit to HEAD; requires --changed-only")
+    parser.add_argument("--base-ref", help="compare explicit base commit to current HEAD; requires --changed-only")
     parser.add_argument("--max-file-chars", type=int, default=12_000)
     parser.add_argument("--max-file-bytes", type=int, default=2_000_000)
     parser.add_argument("--batch-chars", type=int, default=32_000)

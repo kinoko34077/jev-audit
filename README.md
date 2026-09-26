@@ -71,6 +71,16 @@ jev-audit . --json
 jev-audit . --fail-on rework
 ```
 
+### 明示したbase commitから現在HEADを監査
+
+GitHub Actionsなどで、checkout済みの現在HEADを特定のbase commitと比較する場合は次を使います。
+
+```powershell
+jev-audit . --changed-only --base-ref <base-sha> --json --fail-on never
+```
+
+`--base-ref`は`--changed-only`と組み合わせてのみ使用できます。監査本文と`git_head_sha`は現在checkoutされているHEADを指し、`git_base_sha`には解決済みbase commit SHAが記録されます。baseとHEADが同一で差分がない場合はclean no-opとなり、Jev provider requestは発行しません。通常の`jev-audit . --changed-only`は従来どおりHEADとworking tree/untracked filesの差分を監査します。
+
 ## 推奨ワークフロー
 
 通常の開発では、テスト等の後に変更範囲を監査します。

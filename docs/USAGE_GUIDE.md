@@ -117,6 +117,16 @@ jev-audit
 
 巨大repositoryを毎編集でfull scanする運用は避け、日常の変更確認と節目のspot checkを使い分けます。
 
+### 明示baseからcurrent HEADへのchanged-only
+
+通常の`jev-audit . --changed-only`は現在のHEADとworking tree/untracked filesを比較します。CIやbridgeで、commit済みのbase→headを再現可能に監査したい場合は、head commitをcheckoutした状態で次を使います。
+
+```powershell
+jev-audit . --changed-only --base-ref <base-sha> --json --fail-on never
+```
+
+`--base-ref`は`--changed-only`専用です。指定refはprovider work前にexact commit SHAへ解決され、候補pathとdiff hunkは`base_sha`からcurrent `HEAD`までをGitで取得します。一方、監査本文はcurrent HEADのfile contentです。report/provenanceではcurrent HEADを`git_head_sha`、比較元を`git_base_sha`として別々に保持します。baseとHEADが同一で差分がなければ既存のclean no-opと同じくJev requestを発行しません。削除のみの差分はclearへ落とさず、既存のdeleted-change semanticsを維持します。
+
 ### 対象directoryの違い
 
 - Git repositoryのrootでのfull scanは、追跡済みファイルと、`.gitignore`等の標準除外規則に該当しない未追跡ファイルを候補にします。

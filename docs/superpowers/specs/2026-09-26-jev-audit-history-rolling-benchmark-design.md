@@ -1,4 +1,4 @@
-﻿# Jev Audit lightweight history + rolling benchmark design
+# Jev Audit lightweight history + rolling benchmark design
 
 Status: **implemented and repository-verified 2026-09-27**
 
@@ -6,7 +6,7 @@ Related:
 - `jev-audit#7`
 - `devflow#63`
 - `devflow#64`
-- `devflow#65`窶伝#70`
+- `devflow#65`–`#70`
 
 Audit base: `8c62774127f6bd7a945ed875bc682c498534f0c8`
 
@@ -23,7 +23,7 @@ It is **not** intended to prove correctness, provide calendar analytics, rank re
 
 ## 2. Required behavior
 
-### R-HIST-001 窶・one chronological record per completed audit
+### R-HIST-001 — one chronological record per completed audit
 
 A completed Local CLI or Local STDIO MCP audit appends exactly one compact JSON object as one line to the user-level history file.
 
@@ -35,13 +35,13 @@ Default path:
 
 The history location is outside the audited repository. Repository source trees must not acquire user history files as a normal side effect.
 
-### R-HIST-002 窶・existing report persistence stays separate
+### R-HIST-002 — existing report persistence stays separate
 
-Existing CLI `--save` continues to mean 窶忤rite this full AuditReport to the requested file窶・
+Existing CLI `--save` continues to mean “write this full AuditReport to the requested file”.
 
 Automatic chronological history is a separate compact record and must not replace or silently alter `--save` output.
 
-### R-HIST-003 窶・surfaces
+### R-HIST-003 — surfaces
 
 History records distinguish:
 
@@ -50,7 +50,7 @@ History records distinguish:
 
 CLI and MCP must use the same record builder, benchmark engine, rolling-window logic, and writer rather than duplicating the contract.
 
-### R-HIST-004 窶・no source retention
+### R-HIST-004 — no source retention
 
 Automatic history must not contain:
 
@@ -115,22 +115,22 @@ Representative record:
 
 ## 4. Benchmark contract
 
-### R-BENCH-001 窶・fixed synthetic fixtures
+### R-BENCH-001 — fixed synthetic fixtures
 
 Use a small fixed synthetic fixture set, target eight cases:
 
-1. `clear-code` 窶・benign implementation expected to remain non-actionable.
-2. `concrete-issue` 窶・obvious implementation defect expected to surface concrete risk.
-3. `spec-mismatch` 窶・explicit spec/implementation contradiction.
-4. `regression-risk` 窶・change context with a direct regression hazard.
-5. `insufficient-context` 窶・intentionally underdetermined input expected to preserve uncertainty rather than invent a violation.
-6. `strong-rework` 窶・obvious high-confidence defect expected to satisfy the rework contract.
-7. `benign-config-docs` 窶・harmless configuration/documentation pair expected to remain non-actionable.
-8. `mild-review` 窶・plausible review-level concern that should not require strong rework.
+1. `clear-code` — benign implementation expected to remain non-actionable.
+2. `concrete-issue` — obvious implementation defect expected to surface concrete risk.
+3. `spec-mismatch` — explicit spec/implementation contradiction.
+4. `regression-risk` — change context with a direct regression hazard.
+5. `insufficient-context` — intentionally underdetermined input expected to preserve uncertainty rather than invent a violation.
+6. `strong-rework` — obvious high-confidence defect expected to satisfy the rework contract.
+7. `benign-config-docs` — harmless configuration/documentation pair expected to remain non-actionable.
+8. `mild-review` — plausible review-level concern that should not require strong rework.
 
 Fixtures are hand-authored, repository-independent, and small. They never include source copied from a real audited repository.
 
-### R-BENCH-002 窶・one fixture per provider-backed audit
+### R-BENCH-002 — one fixture per provider-backed audit
 
 Do not run the full fixture suite for every audit.
 
@@ -143,7 +143,7 @@ A Local clean `--changed-only` no-op that issued no Jev request remains provider
 - benchmark `score = null`;
 - rolling history is still appended.
 
-### R-BENCH-003 窶・benchmark profile/model isolation
+### R-BENCH-003 — benchmark profile/model isolation
 
 The benchmark contract is fixed and must not change merely because the caller selected a custom audit profile.
 
@@ -151,7 +151,7 @@ The benchmark contract is fixed and must not change merely because the caller se
 - the benchmark uses the same resolved Jev model as the real audit for that run;
 - caller profile changes affect the real audit but do not redefine benchmark expected outcomes.
 
-### R-BENCH-004 窶・scoring
+### R-BENCH-004 — scoring
 
 Each fixture has a deterministic predicate over the benchmark result.
 
@@ -161,7 +161,7 @@ Each fixture has a deterministic predicate over the benchmark result.
 
 No weighted rubric is introduced in this feature.
 
-### R-BENCH-005 窶・rolling window
+### R-BENCH-005 — rolling window
 
 Each history record embeds the most recent **up to 10 benchmark observations**, including the current observation when a fixture was attempted.
 

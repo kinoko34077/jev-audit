@@ -1,6 +1,6 @@
 # Jev Audit Local history + rolling benchmark implementation plan
 
-Status: approved for implementation
+Status: implemented and repository-verified
 
 Owning work: `jev-audit#7`, parent `devflow#63`
 Base: latest accepted `main` (`e05481517eb05c39112b092d03fd883951f2b97f`)

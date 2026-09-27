@@ -1,6 +1,6 @@
 ﻿# Jev Audit lightweight history + rolling benchmark design
 
-Status: **approved 2026-09-27 / implementation in progress**
+Status: **implemented and repository-verified 2026-09-27**
 
 Related:
 - `jev-audit#7`

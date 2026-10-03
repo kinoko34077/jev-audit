@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from jev_audit.scanner import ScanOptions, _git_change_by_path, scan_directory
+from jev_audit.scanner import ScanOptions, _git_change_by_path, _parse_git_patch_path, scan_directory
 
 
 class ScannerTests(unittest.TestCase):
@@ -368,6 +368,22 @@ class ScannerTests(unittest.TestCase):
 
         self.assertEqual(set(changes), {name})
         self.assertIn("+x=1", changes[name])
+
+    def test_git_patch_path_decoder_preserves_quoted_identity(self):
+        self.assertEqual(_parse_git_patch_path("+++ b/normal.py\n"), "normal.py")
+        self.assertEqual(
+            _parse_git_patch_path('+++ "b/line\\nbreak.py"\n'),
+            "line\nbreak.py",
+        )
+        self.assertEqual(
+            _parse_git_patch_path('+++ "b/tab\\tname.py"\n'),
+            "tab\tname.py",
+        )
+        self.assertEqual(
+            _parse_git_patch_path('+++ "b/quote\\\"slash\\\\name.py"\n'),
+            'quote"slash\\name.py',
+        )
+        self.assertIsNone(_parse_git_patch_path("+++ /dev/null\n"))
 
     def test_nul_git_parsers_keep_newline_filename(self):
         from jev_audit.scanner import _parse_git_nul_paths, _parse_git_stage_modes

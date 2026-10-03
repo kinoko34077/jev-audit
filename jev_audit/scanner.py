@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+import ast
 import os
 import shutil
 import subprocess
@@ -214,6 +215,26 @@ def _git_stage_modes(root: Path, names: set[str]) -> dict[str, str]:
     return _parse_git_stage_modes(result.stdout)
 
 
+def _parse_git_patch_path(line: str) -> str | None:
+    """Decode a Git patch `+++` path without losing quoted control characters."""
+    if not line.startswith("+++ "):
+        return None
+    value = line[4:].rstrip("\r\n")
+    if value == "/dev/null":
+        return None
+    if value.startswith('"'):
+        try:
+            decoded = ast.literal_eval(value)
+        except (SyntaxError, ValueError) as exc:
+            raise RuntimeError(f"invalid quoted Git diff path: {value!r}") from exc
+        if not isinstance(decoded, str):
+            raise RuntimeError(f"invalid quoted Git diff path: {value!r}")
+        value = decoded
+    if not value.startswith("b/"):
+        return None
+    return value[2:]
+
+
 def _git_change_by_path(
     root: Path, names: set[str], *, base_sha: str | None = None
 ) -> dict[str, str]:
@@ -254,8 +275,8 @@ def _git_change_by_path(
         if not section:
             continue
         section.append(line)
-        if line.startswith("+++ b/"):
-            current_path = line[6:].rstrip("\r\n")
+        if line.startswith("+++ "):
+            current_path = _parse_git_patch_path(line)
     flush()
     return changes
 

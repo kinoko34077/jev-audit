@@ -327,7 +327,17 @@ class ScannerTests(unittest.TestCase):
                 if args == (
                     "diff", "--no-ext-diff", "--no-textconv", "--unified=80", "HEAD", "--", name
                 ):
-                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                    return subprocess.CompletedProcess(
+                        args,
+                        0,
+                        stdout='diff --git "a/line\\nbreak.py" "b/line\\nbreak.py"\n'
+                        '--- "a/line\\nbreak.py"\n'
+                        '+++ "b/line\\nbreak.py"\n'
+                        '@@ -1 +1 @@\n'
+                        '-x=0\n'
+                        '+x=1\n',
+                        stderr="",
+                    )
                 raise AssertionError(f"unexpected git command: {args}")
 
             with patch("jev_audit.scanner._is_git_root", return_value=True), patch(
@@ -336,6 +346,8 @@ class ScannerTests(unittest.TestCase):
                 result = scan_directory(root, ScanOptions(changed_only=True))
 
         self.assertEqual([item.path for item in result.files], [name])
+        self.assertIn('+++ "b/line\\nbreak.py"', result.files[0].change)
+        self.assertIn("+x=1", result.files[0].change)
 
     def test_nul_git_parsers_keep_newline_filename(self):
         from jev_audit.scanner import _parse_git_nul_paths, _parse_git_stage_modes

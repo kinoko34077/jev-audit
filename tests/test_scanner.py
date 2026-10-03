@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from jev_audit.scanner import ScanOptions, scan_directory
+from jev_audit.scanner import ScanOptions, _git_change_by_path, scan_directory
 
 
 class ScannerTests(unittest.TestCase):
@@ -348,6 +348,26 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual([item.path for item in result.files], [name])
         self.assertIn('+++ "b/line\\nbreak.py"', result.files[0].change)
         self.assertIn("+x=1", result.files[0].change)
+
+    def test_git_change_by_path_maps_quoted_newline_header(self):
+        name = "line\nbreak.py"
+        patch_output = (
+            'diff --git "a/line\\nbreak.py" "b/line\\nbreak.py"\n'
+            '--- "a/line\\nbreak.py"\n'
+            '+++ "b/line\\nbreak.py"\n'
+            '@@ -1 +1 @@\n'
+            '-x=0\n'
+            '+x=1\n'
+        )
+
+        with patch(
+            "jev_audit.scanner._run_git",
+            return_value=subprocess.CompletedProcess((), 0, stdout=patch_output, stderr=""),
+        ):
+            changes = _git_change_by_path(Path("repo"), {name})
+
+        self.assertEqual(set(changes), {name})
+        self.assertIn("+x=1", changes[name])
 
     def test_nul_git_parsers_keep_newline_filename(self):
         from jev_audit.scanner import _parse_git_nul_paths, _parse_git_stage_modes

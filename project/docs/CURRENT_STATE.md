@@ -3,7 +3,7 @@
 Base version: `0.3.8`
 Project version: `0.2.12`
 
-Last verified: 2026-09-25 — GitHub Actions Node 24 action migration
+Last verified: 2026-10-03 — changed-only Git quoted-path diff-context repair
 
 ## Implemented
 
@@ -33,6 +33,7 @@ Last verified: 2026-09-25 — GitHub Actions Node 24 action migration
 - Reports distinguish requested/effective workers and record excluded ignored
   directories without enumerating their child files
 - Git path enumeration uses NUL-delimited output for newline-safe filenames
+- Git C-style quoted patch headers are decoded back to their exact repository-relative paths, so newline/tab/quote/backslash filenames retain bounded changed-only diff context
 - CLI clean changed-only no-op does not require an API key because no Jev request
   is issued
 - Changed-only audits can compare an explicit base commit to the checked-out current HEAD via `--base-ref`; reports preserve exact `git_base_sha` and `git_head_sha`, and equal base/head remains provider-free
@@ -68,5 +69,5 @@ Last verified: 2026-09-25 — GitHub Actions Node 24 action migration
 - `knt base-check`
 - `knt setup`
 - `knt verify`
-- `python -m unittest discover -s tests -v` (135 tests; Windows skips the two
-  newline-filename cases)
+- `python -m unittest discover -s tests -v` (138 tests; Windows skips the two
+  real-filesystem newline-filename cases; platform-neutral quoted-path decoding remains covered)

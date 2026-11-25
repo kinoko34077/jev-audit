@@ -62,6 +62,31 @@ class ObservabilityTests(unittest.TestCase):
             self.assertEqual(record["benchmark"]["recent_scores"], [100])
             self.assertEqual(record["surface"], "local_mcp")
 
+    def test_clean_noop_appends_after_malformed_history_without_provider(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            rows = [
+                {"benchmark": {"fixture_id": "clear-code", "score": 100}},
+                {"benchmark": {"fixture_id": [], "score": 0}},
+                {"benchmark": {"fixture_id": "concrete-issue", "score": None}},
+            ]
+            original = "\n".join(json.dumps(row) for row in rows) + "\n"
+            path.write_text(original, encoding="utf-8")
+
+            def must_not_run(*args, **kwargs):
+                raise AssertionError("benchmark provider call must not run")
+
+            record = record_completed_audit(
+                report(batches=0), surface="local_mcp", history_path=path,
+                benchmark_runner=must_not_run,
+            )
+            self.assertIsNotNone(record)
+            self.assertEqual(record["benchmark"]["recent_scores"], [100, None])
+            self.assertEqual(record["benchmark"]["recent_mean"], 100.0)
+            saved = path.read_text(encoding="utf-8")
+            self.assertTrue(saved.startswith(original))
+            self.assertEqual(len(saved.splitlines()), 4)
+
     def test_history_write_failure_never_changes_real_audit_result(self):
         with TemporaryDirectory() as tmp:
             blocker = Path(tmp) / "blocker"

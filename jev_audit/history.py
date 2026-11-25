@@ -58,10 +58,12 @@ def read_history_state(
         if not isinstance(benchmark, dict):
             continue
         fixture_id = benchmark.get("fixture_id")
-        if fixture_id not in indexes:
+        if not isinstance(fixture_id, str) or fixture_id not in indexes:
             continue
-        score = benchmark.get("score")
-        if score not in (0, 100, None):
+        if "score" not in benchmark:
+            continue
+        score = benchmark["score"]
+        if score is not None and (type(score) is not int or score not in (0, 100)):
             continue
         last_index = indexes[fixture_id]
         scores.append(score)
